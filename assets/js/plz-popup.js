@@ -231,11 +231,14 @@
   /* ── Prefill PLZ (JS fallback for checkout) ── */
 
   function prefillPostcode() {
-    if (!state.plz) return;
-
-    // Checkout: billing_postcode (fallback — PHP session sync handles most cases)
     var billing = $("#billing_postcode");
-    if (billing && !billing.value) {
+    if (!billing) return;
+
+    if (state.mode === "abholung") {
+      // Don't force clear it if the user typed it, but if we need to sync state:
+      // Actually, for pickup we don't strictly need to clear billing postcode as they still need a billing address.
+      // But we should ensure we don't prefill a stale one.
+    } else if (state.plz && !billing.value) {
       billing.value = state.plz;
       billing.dispatchEvent(new Event("change", { bubbles: true }));
     }
@@ -334,16 +337,18 @@
     var pickupBtn = $("#wc-plz-pickup");
     if (pickupBtn) {
       pickupBtn.addEventListener("click", function () {
-        var prevMode = state.mode;
+        btn = $("#wc-plz-submit");
+        if (btn) btn.disabled = true;
 
-        saveState("abholung", "");
-        state = { mode: "abholung", plz: "" };
-        updateBadge("abholung", "");
-        closePopup();
-
-        if (prevMode === "post") {
-          location.reload();
-        }
+        saveState("abholung", "", function() {
+          state = { mode: "abholung", plz: "" };
+          updateBadge("abholung", "");
+          
+          setTimeout(function () {
+            closePopup();
+            location.reload();
+          }, 300);
+        });
       });
     }
 
