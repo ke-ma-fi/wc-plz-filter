@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Badge Demo – WC PLZ-Filter v2.3</title>
+<style>:root{--wc-plz-color:#cc0000;}</style>
+<link rel="stylesheet" href="assets/css/plz-popup.css">
+<style>
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #f5f5f5;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 32px;
+    padding: 100px 40px;
+  }
+  h1 {
+    font-size: 1.4rem;
+    color: #333;
+    margin: 0;
+  }
+  .demo-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 32px;
+    width: 100%;
+    max-width: 1000px;
+  }
+  .demo-card {
+    background: #fff;
+    border-radius: 16px;
+    padding: 28px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    position: relative;
+    min-height: 140px;
+  }
+  .demo-card h3 {
+    font-size: 0.85rem;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin: 0 0 20px;
+  }
+  .demo-badge-row {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .demo-badge-row .wc-plz-badge {
+    position: relative;
+    animation: none;
+    display: inline-flex;
+  }
+  .note {
+    max-width: 600px;
+    text-align: center;
+    color: #666;
+    font-size: 0.9rem;
+    line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+  <h1>WC PLZ-Filter v2.3 — Badge + Tooltip Preview</h1>
+  <p class="note">Alle Badges nutzen jetzt einheitlich die <strong>--wc-plz-color</strong>.<br>
+  Hover über eine Badge, um den Tooltip und den "ändern"-Effekt zu sehen.</p>
+
+  <div class="demo-grid">
+    <!-- Abholung -->
+    <div class="demo-card">
+      <h3>Abholung</h3>
+      <div class="demo-badge-row">
+        <button class="wc-plz-badge" style="display:inline-flex">
+          <span class="wc-plz-badge__pill">
+            <span class="wc-plz-badge__dot"></span>
+            <span class="wc-plz-badge__icon">🏪</span>
+            <span class="wc-plz-badge__info">Abholung</span>
+            <span class="wc-plz-badge__edit">ändern</span>
+          </span>
+          <span class="wc-plz-badge__tooltip wc-plz-badge__tooltip--top" role="tooltip">Mit dieser Auswahl bestellen Sie zur Abholung in einem unserer Ladengeschäfte. Zum Ändern klicken.</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Lokale Lieferung -->
+    <div class="demo-card">
+      <h3>Lokale Lieferung</h3>
+      <div class="demo-badge-row">
+        <button class="wc-plz-badge" style="display:inline-flex">
+          <span class="wc-plz-badge__pill">
+            <span class="wc-plz-badge__dot"></span>
+            <span class="wc-plz-badge__icon">🚚</span>
+            <span class="wc-plz-badge__info">63667 <span class="wc-plz-badge__sep">·</span> Lieferung</span>
+            <span class="wc-plz-badge__edit">ändern</span>
+          </span>
+          <span class="wc-plz-badge__tooltip wc-plz-badge__tooltip--top" role="tooltip">Mit dieser Auswahl bestellen Sie Ihre Ware zur lokalen Auslieferung. Diese wird vom Team der Metzgerei Fischer durchgeführt. Zum Ändern klicken.</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Postversand -->
+    <div class="demo-card">
+      <h3>Postversand</h3>
+      <div class="demo-badge-row">
+        <button class="wc-plz-badge" style="display:inline-flex">
+          <span class="wc-plz-badge__pill">
+            <span class="wc-plz-badge__dot"></span>
+            <span class="wc-plz-badge__icon">📦</span>
+            <span class="wc-plz-badge__info">10115 <span class="wc-plz-badge__sep">·</span> Versand</span>
+            <span class="wc-plz-badge__edit">ändern</span>
+          </span>
+          <span class="wc-plz-badge__tooltip wc-plz-badge__tooltip--bottom" role="tooltip">Mit der ausgewählten PLZ ist nur ein Postversand möglich. Das Sortiment ist möglicherweise eingeschränkt. Zum Ändern bitte klicken.</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <p class="note" style="margin-top: 12px; font-size: 0.8rem; color: #aaa">
+    Tooltip-Richtung wird automatisch je nach Badge-Position bestimmt.<br>
+    Hier: oben (Abholung/Lieferung) und unten (Versand) als Beispiel.
+  </p>
+</body>
+</html>

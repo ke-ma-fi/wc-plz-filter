@@ -1,20 +1,29 @@
-﻿<?php
+<?php
 /**
  * Plugin Name:  WC PLZ-Filter
  * Plugin URI:   https://fischer.digitale-theke.com
- * Description:  PLZ-Popup mit drei Modi (Abholung, Lokale Lieferung, Postversand). Filtert Produkte dynamisch nach WooCommerce-Versandklassen und fuellt den Checkout vor.
- * Version:      2.1.0
+ * Description:  PLZ-Popup mit drei Modi (Abholung, Lokale Lieferung, Postversand). Filtert Produkte dynamisch nach WooCommerce-Versandklassen und füllt den Checkout vor.
+ * Version:      2.3.0
  * Author:       Metzgerei Fischer
+ * License:      Proprietary
+ * License URI:  https://fischer.digitale-theke.com
  * Text Domain:  wc-plz-filter
  * Requires PHP: 8.0
  * WC requires at least: 7.0
+ *
+ * Copyright (c) 2024-2026 Metzgerei Fischer. All rights reserved.
+ *
+ * This software is proprietary and confidential. Unauthorized copying,
+ * modification, distribution, or use of this software, in whole or in part,
+ * is strictly prohibited without prior written permission from the copyright
+ * holder.
  */
 
 defined( 'ABSPATH' ) || exit;
 
 final class WC_PLZ_Filter {
 
-    const VERSION = '2.1.0';
+    const VERSION = '2.3.0';
     const COOKIE  = 'wc_delivery_mode';
     const OPT     = 'wc_plz_filter_v2';
     const CACHE   = 'wc_plz_local_codes';
@@ -86,13 +95,16 @@ final class WC_PLZ_Filter {
 
     private function get_settings(): array {
         return wp_parse_args( get_option( self::OPT, [] ), [
-            'excluded_classes' => [],
-            'cookie_days'      => 30,
-            'popup_title'      => 'Wie moechten Sie bestellen?',
-            'popup_text'       => 'Geben Sie Ihre Postleitzahl ein, um zu pruefen ob wir zu Ihnen liefern, oder waehlen Sie Abholung in unserer Filiale.',
-            'post_msg'         => 'Fuer Ihre PLZ ist Postversand verfuegbar. Einige Frischeprodukte sind bei Versand nicht erhaeltlich.',
-            'popup_color'      => '#cc0000',
-            'badge_position'   => 'bottom-right',
+            'excluded_classes'       => [],
+            'cookie_days'            => 30,
+            'popup_title'            => 'Wie moechten Sie bestellen?',
+            'popup_text'             => 'Geben Sie Ihre Postleitzahl ein, um zu pruefen ob wir zu Ihnen liefern, oder waehlen Sie Abholung in unserer Filiale.',
+            'post_msg'               => 'Fuer Ihre PLZ ist Postversand verfuegbar. Einige Frischeprodukte sind bei Versand nicht erhaeltlich.',
+            'popup_color'            => '#cc0000',
+            'badge_position'         => 'bottom-right',
+            'badge_tooltip_abholung' => 'Mit dieser Auswahl bestellen Sie zur Abholung in einem unserer Ladengeschäfte. Zum Ändern klicken.',
+            'badge_tooltip_local'    => 'Mit dieser Auswahl bestellen Sie Ihre Ware zur lokalen Auslieferung. Diese wird vom Team der Metzgerei Fischer durchgeführt. Zum Ändern klicken.',
+            'badge_tooltip_post'     => 'Mit der ausgewählten PLZ ist nur ein Postversand möglich. Das Sortiment ist möglicherweise eingeschränkt. Zum Ändern bitte klicken.',
         ] );
     }
 
@@ -228,7 +240,7 @@ final class WC_PLZ_Filter {
             'is_local' => $local,
             'mode'     => $local ? 'local' : 'post',
             'message'  => $local
-                ? 'Wir liefern in Ihre PLZ ' . $plz . '! Alle Produkte verfuegbar.'
+                ? 'Wir liefern in Ihre PLZ ' . $plz . '! Alle Produkte verfügbar.'
                 : $settings['post_msg'],
         ] );
     }
@@ -268,13 +280,16 @@ final class WC_PLZ_Filter {
         wp_enqueue_script( 'wc-plz-filter', $url . 'assets/js/plz-popup.js', [ 'jquery' ], self::VERSION, true );
 
         wp_localize_script( 'wc-plz-filter', 'wcPlz', [
-            'ajaxUrl'        => admin_url( 'admin-ajax.php' ),
-            'nonce'          => wp_create_nonce( 'wc_plz_nonce' ),
-            'cookieName'     => self::COOKIE,
-            'cookieDays'     => (int) $settings['cookie_days'],
-            'state'          => $state,
-            'isCheckout'     => is_checkout() ? 1 : 0,
-            'badgePosition'  => $settings['badge_position'],
+            'ajaxUrl'              => admin_url( 'admin-ajax.php' ),
+            'nonce'                => wp_create_nonce( 'wc_plz_nonce' ),
+            'cookieName'           => self::COOKIE,
+            'cookieDays'           => (int) $settings['cookie_days'],
+            'state'                => $state,
+            'isCheckout'           => is_checkout() ? 1 : 0,
+            'badgePosition'        => $settings['badge_position'],
+            'badgeTooltipAbholung' => $settings['badge_tooltip_abholung'],
+            'badgeTooltipLocal'    => $settings['badge_tooltip_local'],
+            'badgeTooltipPost'     => $settings['badge_tooltip_post'],
         ] );
     }
 
@@ -301,22 +316,26 @@ final class WC_PLZ_Filter {
                         <label class="wc-plz-label" for="wc-plz-input">Postleitzahl fuer Lieferung / Versand</label>
                         <div class="wc-plz-input-row">
                             <input type="text" id="wc-plz-input" class="wc-plz-input" maxlength="5" inputmode="numeric" pattern="[0-9]{5}" placeholder="z. B. 63667" autocomplete="postal-code" />
-                            <button id="wc-plz-submit" class="wc-plz-btn wc-plz-btn--primary">Pruefen</button>
+                            <button id="wc-plz-submit" class="wc-plz-btn wc-plz-btn--primary">Prüfen</button>
                         </div>
                         <div id="wc-plz-feedback" class="wc-plz-feedback" aria-live="polite"></div>
                     </div>
                     <div class="wc-plz-divider"><span>oder</span></div>
-                    <button id="wc-plz-pickup" class="wc-plz-btn wc-plz-btn--pickup">Ich moechte abholen</button>
+                    <button id="wc-plz-pickup" class="wc-plz-btn wc-plz-btn--pickup">Ich möchte abholen</button>
                 </div>
                 <div class="wc-plz-modal__footer">
-                    <button id="wc-plz-skip" class="wc-plz-btn wc-plz-btn--ghost">Ueberspringen</button>
+                    <button id="wc-plz-skip" class="wc-plz-btn wc-plz-btn--ghost">Überspringen</button>
                 </div>
             </div>
         </div>
-        <button id="wc-plz-badge" class="wc-plz-badge wc-plz-badge--<?php echo $badge_pos; ?>" style="display:none;" aria-label="Bestellmodus aendern">
-            <span id="wc-plz-badge-icon" class="wc-plz-badge__icon"></span>
-            <span id="wc-plz-badge-text"></span>
-            <span class="wc-plz-badge__edit">aendern</span>
+        <button id="wc-plz-badge" class="wc-plz-badge wc-plz-badge--<?php echo $badge_pos; ?>" style="display:none;" aria-label="Bestellmodus ändern">
+            <span class="wc-plz-badge__pill">
+                <span class="wc-plz-badge__dot"></span>
+                <span id="wc-plz-badge-icon" class="wc-plz-badge__icon"></span>
+                <span id="wc-plz-badge-info" class="wc-plz-badge__info"></span>
+                <span class="wc-plz-badge__edit">ändern</span>
+            </span>
+            <span id="wc-plz-badge-tooltip" class="wc-plz-badge__tooltip" role="tooltip"></span>
         </button>
         <?php
     }
@@ -334,17 +353,20 @@ final class WC_PLZ_Filter {
     public function sanitize_settings( array $input ): array {
         delete_transient( self::CACHE );
 
-        $valid_pos = [ 'bottom-right', 'bottom-left', 'top-right', 'top-left' ];
+        $valid_pos = [ 'bottom-right', 'bottom-left', 'top-right', 'top-left', 'bottom-center', 'left-center', 'right-center' ];
         $pos = $input['badge_position'] ?? 'bottom-right';
 
         return [
-            'excluded_classes' => array_map( 'intval', (array) ( $input['excluded_classes'] ?? [] ) ),
-            'cookie_days'      => max( 1, (int) ( $input['cookie_days'] ?? 30 ) ),
-            'popup_title'      => sanitize_text_field( $input['popup_title'] ?? '' ),
-            'popup_text'       => sanitize_textarea_field( $input['popup_text'] ?? '' ),
-            'post_msg'         => sanitize_textarea_field( $input['post_msg'] ?? '' ),
-            'popup_color'      => sanitize_hex_color( $input['popup_color'] ?? '#cc0000' ) ?: '#cc0000',
-            'badge_position'   => in_array( $pos, $valid_pos, true ) ? $pos : 'bottom-right',
+            'excluded_classes'       => array_map( 'intval', (array) ( $input['excluded_classes'] ?? [] ) ),
+            'cookie_days'            => max( 1, (int) ( $input['cookie_days'] ?? 30 ) ),
+            'popup_title'            => sanitize_text_field( $input['popup_title'] ?? '' ),
+            'popup_text'             => sanitize_textarea_field( $input['popup_text'] ?? '' ),
+            'post_msg'               => sanitize_textarea_field( $input['post_msg'] ?? '' ),
+            'popup_color'            => sanitize_hex_color( $input['popup_color'] ?? '#cc0000' ) ?: '#cc0000',
+            'badge_position'         => in_array( $pos, $valid_pos, true ) ? $pos : 'bottom-right',
+            'badge_tooltip_abholung' => sanitize_textarea_field( $input['badge_tooltip_abholung'] ?? '' ),
+            'badge_tooltip_local'    => sanitize_textarea_field( $input['badge_tooltip_local'] ?? '' ),
+            'badge_tooltip_post'     => sanitize_textarea_field( $input['badge_tooltip_post'] ?? '' ),
         ];
     }
 
@@ -414,7 +436,7 @@ final class WC_PLZ_Filter {
                         <td>
                             <input type="color" name="<?php echo esc_attr( $opt ); ?>[popup_color]" value="<?php echo esc_attr( $settings['popup_color'] ); ?>" />
                             <code style="margin-left:8px;vertical-align:middle;"><?php echo esc_html( $settings['popup_color'] ); ?></code>
-                            <p class="description">Farbe des Popup-Headers und der Buttons.</p>
+                            <p class="description">Farbe des Popup-Headers, der Buttons und der Badge.</p>
                         </td>
                     </tr>
                     <tr>
@@ -422,7 +444,7 @@ final class WC_PLZ_Filter {
                         <td>
                             <select name="<?php echo esc_attr( $opt ); ?>[badge_position]">
                             <?php
-                            $positions = [ 'bottom-right' => 'Unten rechts', 'bottom-left' => 'Unten links', 'top-right' => 'Oben rechts', 'top-left' => 'Oben links' ];
+                            $positions = [ 'bottom-right' => 'Unten rechts', 'bottom-left' => 'Unten links', 'top-right' => 'Oben rechts', 'top-left' => 'Oben links', 'bottom-center' => 'Unten mittig', 'left-center' => 'Links mittig', 'right-center' => 'Rechts mittig' ];
                             foreach ( $positions as $val => $label ) :
                             ?>
                                 <option value="<?php echo esc_attr( $val ); ?>" <?php selected( $settings['badge_position'], $val ); ?>><?php echo esc_html( $label ); ?></option>
@@ -432,6 +454,30 @@ final class WC_PLZ_Filter {
                         </td>
                     </tr>
                 </table>
+
+                <h2 class="title">Badge-Tooltip Texte</h2>
+                <p>Diese Texte werden als Info-Sprechblase beim Hover über die Badge angezeigt.</p>
+                <table class="form-table">
+                    <tr>
+                        <th>Tooltip: Abholung</th>
+                        <td>
+                            <textarea name="<?php echo esc_attr( $opt ); ?>[badge_tooltip_abholung]" rows="2" class="large-text"><?php echo esc_textarea( $settings['badge_tooltip_abholung'] ); ?></textarea>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Tooltip: Lokale Lieferung</th>
+                        <td>
+                            <textarea name="<?php echo esc_attr( $opt ); ?>[badge_tooltip_local]" rows="2" class="large-text"><?php echo esc_textarea( $settings['badge_tooltip_local'] ); ?></textarea>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Tooltip: Postversand</th>
+                        <td>
+                            <textarea name="<?php echo esc_attr( $opt ); ?>[badge_tooltip_post]" rows="2" class="large-text"><?php echo esc_textarea( $settings['badge_tooltip_post'] ); ?></textarea>
+                        </td>
+                    </tr>
+                </table>
+
                 <?php submit_button( 'Speichern' ); ?>
             </form>
             <hr />

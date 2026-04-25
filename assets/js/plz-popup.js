@@ -1,6 +1,8 @@
 /**
- * WC PLZ-Filter v2 – Frontend
- * Popup (PLZ + Abholung), Badge, Checkout-Sync
+ * WC PLZ-Filter v2.3 – Frontend
+ * Popup (PLZ + Abholung), Badge with Tooltip, Checkout-Sync
+ *
+ * @copyright Metzgerei Fischer. All rights reserved.
  */
 (function ($) {
   "use strict";
@@ -91,12 +93,29 @@
     );
   }
 
+  /* ── Tooltip direction ─────────────────────── */
+
+  function getTooltipDir(pos) {
+    switch (pos) {
+      case "top-left":
+      case "top-right":
+        return "bottom";
+      case "left-center":
+        return "right";
+      case "right-center":
+        return "left";
+      default:
+        return "top"; // bottom-right, bottom-left, bottom-center
+    }
+  }
+
   /* ── Badge ──────────────────────────────────── */
 
   function updateBadge(mode, plz) {
     var $badge = $("#wc-plz-badge");
-    var $text = $("#wc-plz-badge-text");
+    var $info = $("#wc-plz-badge-info");
     var $icon = $("#wc-plz-badge-icon");
+    var $tooltip = $("#wc-plz-badge-tooltip");
 
     if (!mode) {
       $badge.hide();
@@ -107,20 +126,35 @@
       "wc-plz-badge--abholung wc-plz-badge--local wc-plz-badge--post",
     );
 
+    // Set tooltip direction based on badge position
+    var tooltipDir = getTooltipDir(D.badgePosition || "bottom-right");
+    $tooltip
+      .removeClass(
+        "wc-plz-badge__tooltip--top wc-plz-badge__tooltip--bottom wc-plz-badge__tooltip--left wc-plz-badge__tooltip--right",
+      )
+      .addClass("wc-plz-badge__tooltip--" + tooltipDir);
+
     switch (mode) {
       case "abholung":
         $icon.text("\uD83C\uDFEA");
-        $text.text("Abholung \u2014 alle Produkte verf\u00FCgbar");
+        $info.text("Abholung");
+        $tooltip.text(D.badgeTooltipAbholung || "");
         $badge.addClass("wc-plz-badge--abholung");
         break;
       case "local":
         $icon.text("\uD83D\uDE9A");
-        $text.text("Lieferung nach " + plz);
+        $info.html(
+          plz + ' <span class="wc-plz-badge__sep">\u00B7</span> Lieferung',
+        );
+        $tooltip.text(D.badgeTooltipLocal || "");
         $badge.addClass("wc-plz-badge--local");
         break;
       case "post":
         $icon.text("\uD83D\uDCE6");
-        $text.text("Versand nach " + plz + " \u2014 eingeschr\u00E4nkt");
+        $info.html(
+          plz + ' <span class="wc-plz-badge__sep">\u00B7</span> Versand',
+        );
+        $tooltip.text(D.badgeTooltipPost || "");
         $badge.addClass("wc-plz-badge--post");
         break;
     }
@@ -146,12 +180,12 @@
     var plz = $input.val().replace(/\D/g, "");
 
     if (!/^\d{5}$/.test(plz)) {
-      setFeedback("Bitte eine g\u00FCltige 5-stellige PLZ eingeben.", "error");
+      setFeedback("Bitte eine gültige 5-stellige PLZ eingeben.", "error");
       $input.trigger("focus");
       return;
     }
 
-    $btn.prop("disabled", true).text("Pr\u00FCfe \u2026");
+    $btn.prop("disabled", true).text("Prüfe …");
     setFeedback("", "");
 
     $.post(
@@ -162,7 +196,7 @@
         plz: plz,
       },
       function (res) {
-        $btn.prop("disabled", false).text("Pr\u00FCfen");
+        $btn.prop("disabled", false).text("Prüfen");
 
         if (!res.success) {
           setFeedback(
@@ -185,7 +219,7 @@
         }, 1200);
       },
     ).fail(function () {
-      $btn.prop("disabled", false).text("Pr\u00FCfen");
+      $btn.prop("disabled", false).text("Prüfen");
       setFeedback("Verbindungsfehler. Bitte erneut versuchen.", "error");
     });
   }
