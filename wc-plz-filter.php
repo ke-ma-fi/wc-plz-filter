@@ -273,6 +273,13 @@ final class WC_PLZ_Filter {
 
         $this->set_cookie( $mode . ':' . $plz, $days );
 
+        // Sync PLZ into WooCommerce customer session (for cart & checkout prefill)
+        if ( ! empty( $plz ) && function_exists( 'WC' ) && WC()->customer ) {
+            WC()->customer->set_billing_postcode( $plz );
+            WC()->customer->set_shipping_postcode( $plz );
+            WC()->customer->save();
+        }
+
         wp_send_json_success( [ 'mode' => $mode, 'plz' => $plz ] );
     }
 
