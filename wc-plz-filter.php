@@ -288,7 +288,7 @@ final class WC_PLZ_Filter {
         $settings = $this->get_settings();
 
         wp_enqueue_style( 'wc-plz-filter', $url . 'assets/css/plz-popup.css', [], self::VERSION );
-        wp_enqueue_script( 'wc-plz-filter', $url . 'assets/js/plz-popup.js', [ 'jquery' ], self::VERSION, true );
+        wp_enqueue_script( 'wc-plz-filter', $url . 'assets/js/plz-popup.js', [], self::VERSION, true );
 
         wp_localize_script( 'wc-plz-filter', 'wcPlz', [
             'ajaxUrl'              => admin_url( 'admin-ajax.php' ),
