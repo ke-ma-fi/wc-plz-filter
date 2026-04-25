@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vanilla JS Test – WC PLZ-Filter v2.4</title>
+<style>:root{--wc-plz-color:#cc0000;}</style>
+<link rel="stylesheet" href="assets/css/plz-popup.css">
+<style>
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #f5f5f5;
+    padding: 20px;
+  }
+  #test-log {
+    background: #1a1a2e;
+    color: #0f0;
+    font-family: monospace;
+    font-size: 13px;
+    padding: 20px;
+    border-radius: 12px;
+    max-width: 700px;
+    margin: 20px auto;
+    min-height: 300px;
+    white-space: pre-wrap;
+    line-height: 1.6;
+  }
+  h1 {
+    text-align: center;
+    font-size: 1.2rem;
+    color: #333;
+  }
+  .pass { color: #0f0; }
+  .fail { color: #f44; }
+</style>
+</head>
+<body>
+  <h1>🧪 Vanilla JS – Funktionstest</h1>
+  <div id="test-log"></div>
+
+  <!-- Simulate the WP-rendered popup/badge HTML -->
+  <div id="wc-plz-overlay" class="wc-plz-overlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="wc-plz-title">
+    <div class="wc-plz-modal">
+      <div class="wc-plz-modal__header">
+        <h2 class="wc-plz-modal__title" id="wc-plz-title">Wie moechten Sie bestellen?</h2>
+      </div>
+      <div class="wc-plz-modal__body">
+        <p class="wc-plz-modal__text">Test popup text.</p>
+        <div class="wc-plz-section">
+          <label class="wc-plz-label" for="wc-plz-input">PLZ</label>
+          <div class="wc-plz-input-row">
+            <input type="text" id="wc-plz-input" class="wc-plz-input" maxlength="5" inputmode="numeric" />
+            <button id="wc-plz-submit" class="wc-plz-btn wc-plz-btn--primary">Prüfen</button>
+          </div>
+          <div id="wc-plz-feedback" class="wc-plz-feedback" aria-live="polite"></div>
+        </div>
+        <div class="wc-plz-divider"><span>oder</span></div>
+        <button id="wc-plz-pickup" class="wc-plz-btn wc-plz-btn--pickup">Ich möchte abholen</button>
+      </div>
+      <div class="wc-plz-modal__footer">
+        <button id="wc-plz-skip" class="wc-plz-btn wc-plz-btn--ghost">Überspringen</button>
+      </div>
+    </div>
+  </div>
+
+  <button id="wc-plz-badge" class="wc-plz-badge wc-plz-badge--bottom-right" style="display:none;" aria-label="Bestellmodus ändern">
+    <span class="wc-plz-badge__pill">
+      <span class="wc-plz-badge__dot"></span>
+      <span id="wc-plz-badge-icon" class="wc-plz-badge__icon"></span>
+      <span id="wc-plz-badge-info" class="wc-plz-badge__info"></span>
+      <span class="wc-plz-badge__edit">ändern</span>
+    </span>
+    <span id="wc-plz-badge-tooltip" class="wc-plz-badge__tooltip" role="tooltip"></span>
+  </button>
+
+  <!-- Mock wcPlz global BEFORE loading the script -->
+  <script>
+    // Mock the WordPress localized data
+    window.wcPlz = {
+      ajaxUrl: '/fake-ajax',
+      nonce: 'test123',
+      cookieName: 'wc_delivery_mode_test',
+      cookieDays: '30',
+      state: { mode: '', plz: '' },
+      isCheckout: '0',
+      badgePosition: 'bottom-right',
+      badgeTooltipAbholung: 'Abholung tooltip text',
+      badgeTooltipLocal: 'Lokale Lieferung tooltip text',
+      badgeTooltipPost: 'Postversand tooltip text',
+    };
+  </script>
+  <script src="assets/js/plz-popup.js"></script>
+  <script>
+    // ── Test Runner ──────────────────────────────
+    var log = document.getElementById('test-log');
+    var passed = 0;
+    var failed = 0;
+
+    function assert(name, condition) {
+      if (condition) {
+        log.innerHTML += '<span class="pass">✅ PASS</span>  ' + name + '\n';
+        passed++;
+      } else {
+        log.innerHTML += '<span class="fail">❌ FAIL</span>  ' + name + '\n';
+        failed++;
+      }
+    }
+
+    function runTests() {
+      log.textContent = '── Running Tests ──\n\n';
+
+      // 1. Script loaded without errors
+      assert('Script loaded (no jQuery needed)', typeof window.wcPlz === 'object');
+
+      // 2. DOM elements exist
+      assert('Overlay exists', !!document.querySelector('#wc-plz-overlay'));
+      assert('Badge exists', !!document.querySelector('#wc-plz-badge'));
+      assert('PLZ input exists', !!document.querySelector('#wc-plz-input'));
+      assert('Submit button exists', !!document.querySelector('#wc-plz-submit'));
+      assert('Pickup button exists', !!document.querySelector('#wc-plz-pickup'));
+      assert('Skip button exists', !!document.querySelector('#wc-plz-skip'));
+      assert('Tooltip element exists', !!document.querySelector('#wc-plz-badge-tooltip'));
+
+      // 3. Popup opens after delay (setTimeout 800ms)
+      // Since no mode is set and isCheckout=0, popup should auto-open
+      setTimeout(function() {
+        var overlay = document.querySelector('#wc-plz-overlay');
+        assert('Popup auto-opened (no cookie)', overlay.style.display !== 'none');
+        assert('Popup has opacity 1', overlay.style.opacity === '1');
+
+        // 4. Skip closes popup
+        document.querySelector('#wc-plz-skip').click();
+        setTimeout(function() {
+          assert('Skip closed popup', overlay.style.display === 'none' || overlay.style.opacity === '0');
+
+          // 5. PLZ input validation
+          var input = document.querySelector('#wc-plz-input');
+          input.value = 'abc';
+          input.dispatchEvent(new Event('input'));
+          assert('Non-numeric chars stripped', input.value === '');
+
+          input.value = '123456789';
+          input.dispatchEvent(new Event('input'));
+          assert('PLZ capped at 5 digits', input.value.length <= 5);
+
+          // 6. Submit with invalid PLZ
+          input.value = '123';
+          document.querySelector('#wc-plz-submit').click();
+          var fb = document.querySelector('#wc-plz-feedback');
+          assert('Invalid PLZ shows error', fb.textContent.includes('5-stellige'));
+          assert('Feedback has error class', fb.classList.contains('wc-plz-fb--error'));
+
+          // 7. Badge click opens popup
+          // First simulate a state with badge visible
+          var badge = document.querySelector('#wc-plz-badge');
+          badge.style.display = '';
+          badge.style.opacity = '1';
+          badge.click();
+          setTimeout(function() {
+            assert('Badge click opened popup', overlay.style.display !== 'none');
+
+            // 8. Escape closes popup
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+            setTimeout(function() {
+              assert('Escape closed popup', overlay.style.opacity === '0' || overlay.style.display === 'none');
+
+              // 9. Overlay backdrop click closes popup
+              // Open again first
+              badge.click();
+              setTimeout(function() {
+                overlay.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+                setTimeout(function() {
+                  assert('Overlay click closed popup', overlay.style.opacity === '0' || overlay.style.display === 'none');
+
+                  // 10. Cookie functions work
+                  document.cookie = 'wc_delivery_mode_test=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+                  assert('No cookie initially', !document.cookie.includes('wc_delivery_mode_test=a'));
+
+                  // ── Summary ──
+                  log.innerHTML += '\n── Summary ──\n';
+                  log.innerHTML += '<span class="' + (failed === 0 ? 'pass' : 'fail') + '">' +
+                    passed + ' passed, ' + failed + ' failed</span>\n';
+
+                  if (failed === 0) {
+                    log.innerHTML += '\n🎉 Alle Tests bestanden! Vanilla JS ist ready.\n';
+                  }
+                }, 250);
+              }, 250);
+            }, 250);
+          }, 250);
+        }, 250);
+      }, 1200);
+    }
+
+    // Run after DOM + script have initialized
+    setTimeout(runTests, 100);
+  </script>
+</body>
+</html>

@@ -1,17 +1,23 @@
 /**
- * WC PLZ-Filter v2.3 – Frontend
+ * WC PLZ-Filter v2.4 – Frontend (Vanilla JS, no jQuery)
  * Popup (PLZ + Abholung), Badge with Tooltip, Checkout-Sync
  *
  * @copyright Metzgerei Fischer. All rights reserved.
  */
-(function ($) {
+(function () {
   "use strict";
 
-  var D = wcPlz;
+  var D = window.wcPlz;
+  if (!D) return;
+
   var COOKIE = D.cookieName;
   var DAYS = parseInt(D.cookieDays, 10) || 30;
 
-  /* ── Cookie-Helfer ──────────────────────────── */
+  /* ── Helpers ────────────────────────────────── */
+
+  function $(sel) {
+    return document.querySelector(sel);
+  }
 
   function getCookie(name) {
     var m = document.cookie.match(
@@ -33,6 +39,57 @@
       "; path=/" +
       (location.protocol === "https:" ? "; Secure" : "") +
       "; SameSite=Lax";
+  }
+
+  /* ── AJAX helper (replaces $.post) ─────────── */
+
+  function post(url, data, onSuccess, onError) {
+    var body = new URLSearchParams();
+    for (var key in data) {
+      if (data.hasOwnProperty(key)) {
+        body.append(key, data[key]);
+      }
+    }
+
+    var xhr = new XMLHttpRequest();
+    xhr.open("POST", url, true);
+    xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+    xhr.onreadystatechange = function () {
+      if (xhr.readyState !== 4) return;
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          var res = JSON.parse(xhr.responseText);
+          if (onSuccess) onSuccess(res);
+        } catch (e) {
+          if (onError) onError();
+        }
+      } else {
+        if (onError) onError();
+      }
+    };
+    xhr.send(body.toString());
+  }
+
+  /* ── Fade helpers (replaces $.fadeIn/Out) ──── */
+
+  function fadeIn(el, duration) {
+    if (!el) return;
+    el.style.display = "";
+    el.style.opacity = "0";
+    el.style.transition = "opacity " + (duration || 200) + "ms ease";
+    // Force reflow before transition
+    void el.offsetWidth;
+    el.style.opacity = "1";
+  }
+
+  function fadeOut(el, duration) {
+    if (!el) return;
+    el.style.transition = "opacity " + (duration || 200) + "ms ease";
+    el.style.opacity = "0";
+    setTimeout(function () {
+      el.style.display = "none";
+      el.style.transition = "";
+    }, duration || 200);
   }
 
   /* ── State ──────────────────────────────────── */
@@ -59,19 +116,27 @@
   /* ── Popup ──────────────────────────────────── */
 
   function openPopup() {
-    $("#wc-plz-overlay").fadeIn(200);
-    $("#wc-plz-input").val(state.plz).trigger("focus");
+    var overlay = $("#wc-plz-overlay");
+    if (!overlay) return;
+    fadeIn(overlay, 200);
+    var input = $("#wc-plz-input");
+    if (input) {
+      input.value = state.plz;
+      input.focus();
+    }
     setFeedback("", "");
   }
 
   function closePopup() {
-    $("#wc-plz-overlay").fadeOut(200);
+    fadeOut($("#wc-plz-overlay"), 200);
   }
 
   function setFeedback(msg, type) {
-    var $fb = $("#wc-plz-feedback");
-    $fb.text(msg).removeClass("wc-plz-fb--ok wc-plz-fb--warn wc-plz-fb--error");
-    if (type) $fb.addClass("wc-plz-fb--" + type);
+    var fb = $("#wc-plz-feedback");
+    if (!fb) return;
+    fb.textContent = msg;
+    fb.className = "wc-plz-feedback";
+    if (type) fb.classList.add("wc-plz-fb--" + type);
   }
 
   /* ── State speichern ────────────────────────── */
@@ -79,7 +144,7 @@
   function saveState(mode, plz, callback) {
     setCookie(COOKIE, mode + ":" + plz, DAYS);
 
-    $.post(
+    post(
       D.ajaxUrl,
       {
         action: "wc_plz_save",
@@ -105,90 +170,95 @@
       case "right-center":
         return "left";
       default:
-        return "top"; // bottom-right, bottom-left, bottom-center
+        return "top";
     }
   }
 
   /* ── Badge ──────────────────────────────────── */
 
   function updateBadge(mode, plz) {
-    var $badge = $("#wc-plz-badge");
-    var $info = $("#wc-plz-badge-info");
-    var $icon = $("#wc-plz-badge-icon");
-    var $tooltip = $("#wc-plz-badge-tooltip");
+    var badge = $("#wc-plz-badge");
+    var info = $("#wc-plz-badge-info");
+    var icon = $("#wc-plz-badge-icon");
+    var tooltip = $("#wc-plz-badge-tooltip");
 
-    if (!mode) {
-      $badge.hide();
+    if (!badge || !mode) {
+      if (badge) badge.style.display = "none";
       return;
     }
 
-    $badge.removeClass(
-      "wc-plz-badge--abholung wc-plz-badge--local wc-plz-badge--post",
+    badge.classList.remove(
+      "wc-plz-badge--abholung",
+      "wc-plz-badge--local",
+      "wc-plz-badge--post",
     );
 
-    // Set tooltip direction based on badge position
+    // Set tooltip direction
     var tooltipDir = getTooltipDir(D.badgePosition || "bottom-right");
-    $tooltip
-      .removeClass(
-        "wc-plz-badge__tooltip--top wc-plz-badge__tooltip--bottom wc-plz-badge__tooltip--left wc-plz-badge__tooltip--right",
-      )
-      .addClass("wc-plz-badge__tooltip--" + tooltipDir);
+    if (tooltip) {
+      tooltip.className = "wc-plz-badge__tooltip";
+      tooltip.classList.add("wc-plz-badge__tooltip--" + tooltipDir);
+    }
 
     switch (mode) {
       case "abholung":
-        $icon.text("\uD83C\uDFEA");
-        $info.text("Abholung");
-        $tooltip.text(D.badgeTooltipAbholung || "");
-        $badge.addClass("wc-plz-badge--abholung");
+        if (icon) icon.textContent = "\uD83C\uDFEA";
+        if (info) info.textContent = "Abholung";
+        if (tooltip) tooltip.textContent = D.badgeTooltipAbholung || "";
+        badge.classList.add("wc-plz-badge--abholung");
         break;
       case "local":
-        $icon.text("\uD83D\uDE9A");
-        $info.html(
-          plz + ' <span class="wc-plz-badge__sep">\u00B7</span> Lieferung',
-        );
-        $tooltip.text(D.badgeTooltipLocal || "");
-        $badge.addClass("wc-plz-badge--local");
+        if (icon) icon.textContent = "\uD83D\uDE9A";
+        if (info)
+          info.innerHTML =
+            plz + ' <span class="wc-plz-badge__sep">\u00B7</span> Lieferung';
+        if (tooltip) tooltip.textContent = D.badgeTooltipLocal || "";
+        badge.classList.add("wc-plz-badge--local");
         break;
       case "post":
-        $icon.text("\uD83D\uDCE6");
-        $info.html(
-          plz + ' <span class="wc-plz-badge__sep">\u00B7</span> Versand',
-        );
-        $tooltip.text(D.badgeTooltipPost || "");
-        $badge.addClass("wc-plz-badge--post");
+        if (icon) icon.textContent = "\uD83D\uDCE6";
+        if (info)
+          info.innerHTML =
+            plz + ' <span class="wc-plz-badge__sep">\u00B7</span> Versand';
+        if (tooltip) tooltip.textContent = D.badgeTooltipPost || "";
+        badge.classList.add("wc-plz-badge--post");
         break;
     }
 
-    $badge.fadeIn(300);
+    fadeIn(badge, 300);
   }
 
   /* ── Checkout Prefill ───────────────────────── */
 
   function prefillCheckout() {
     if (!parseInt(D.isCheckout, 10) || !state.plz) return;
-    var $f = $("#billing_postcode");
-    if ($f.length && !$f.val()) {
-      $f.val(state.plz).trigger("change");
+    var f = $("#billing_postcode");
+    if (f && !f.value) {
+      f.value = state.plz;
+      f.dispatchEvent(new Event("change", { bubbles: true }));
     }
   }
 
   /* ── PLZ pruefen ────────────────────────────── */
 
   function handlePlzSubmit() {
-    var $btn = $("#wc-plz-submit");
-    var $input = $("#wc-plz-input");
-    var plz = $input.val().replace(/\D/g, "");
+    var btn = $("#wc-plz-submit");
+    var input = $("#wc-plz-input");
+    if (!btn || !input) return;
+
+    var plz = input.value.replace(/\D/g, "");
 
     if (!/^\d{5}$/.test(plz)) {
       setFeedback("Bitte eine gültige 5-stellige PLZ eingeben.", "error");
-      $input.trigger("focus");
+      input.focus();
       return;
     }
 
-    $btn.prop("disabled", true).text("Prüfe …");
+    btn.disabled = true;
+    btn.textContent = "Prüfe …";
     setFeedback("", "");
 
-    $.post(
+    post(
       D.ajaxUrl,
       {
         action: "wc_plz_check",
@@ -196,7 +266,8 @@
         plz: plz,
       },
       function (res) {
-        $btn.prop("disabled", false).text("Prüfen");
+        btn.disabled = false;
+        btn.textContent = "Prüfen";
 
         if (!res.success) {
           setFeedback(
@@ -218,15 +289,17 @@
           location.reload();
         }, 1200);
       },
-    ).fail(function () {
-      $btn.prop("disabled", false).text("Prüfen");
-      setFeedback("Verbindungsfehler. Bitte erneut versuchen.", "error");
-    });
+      function () {
+        btn.disabled = false;
+        btn.textContent = "Prüfen";
+        setFeedback("Verbindungsfehler. Bitte erneut versuchen.", "error");
+      },
+    );
   }
 
   /* ── Init ───────────────────────────────────── */
 
-  $(function () {
+  function init() {
     if (state.mode) {
       updateBadge(state.mode, state.plz);
     } else if (!parseInt(D.isCheckout, 10)) {
@@ -235,51 +308,77 @@
 
     prefillCheckout();
 
-    $("#wc-plz-submit").on("click", handlePlzSubmit);
+    // Submit button
+    var submitBtn = $("#wc-plz-submit");
+    if (submitBtn) {
+      submitBtn.addEventListener("click", handlePlzSubmit);
+    }
 
-    $("#wc-plz-input")
-      .on("keydown", function (e) {
+    // PLZ input
+    var plzInput = $("#wc-plz-input");
+    if (plzInput) {
+      plzInput.addEventListener("keydown", function (e) {
         if (e.key === "Enter") {
           e.preventDefault();
           handlePlzSubmit();
         }
-      })
-      .on("input", function () {
+      });
+      plzInput.addEventListener("input", function () {
         this.value = this.value.replace(/\D/g, "").slice(0, 5);
       });
+    }
 
-    $("#wc-plz-pickup").on("click", function () {
-      var prevMode = state.mode;
+    // Pickup button
+    var pickupBtn = $("#wc-plz-pickup");
+    if (pickupBtn) {
+      pickupBtn.addEventListener("click", function () {
+        var prevMode = state.mode;
 
-      saveState("abholung", "");
-      state = { mode: "abholung", plz: "" };
-      updateBadge("abholung", "");
-      closePopup();
+        saveState("abholung", "");
+        state = { mode: "abholung", plz: "" };
+        updateBadge("abholung", "");
+        closePopup();
 
-      if (prevMode === "post") {
-        location.reload();
-      }
-    });
+        if (prevMode === "post") {
+          location.reload();
+        }
+      });
+    }
 
-    $("#wc-plz-skip").on("click", closePopup);
+    // Skip button
+    var skipBtn = $("#wc-plz-skip");
+    if (skipBtn) {
+      skipBtn.addEventListener("click", closePopup);
+    }
 
-    $("#wc-plz-overlay").on("click", function (e) {
-      if ($(e.target).is("#wc-plz-overlay")) closePopup();
-    });
+    // Overlay click
+    var overlay = $("#wc-plz-overlay");
+    if (overlay) {
+      overlay.addEventListener("click", function (e) {
+        if (e.target === overlay) closePopup();
+      });
+    }
 
-    $(document).on("keydown", function (e) {
+    // Escape key
+    document.addEventListener("keydown", function (e) {
       if (e.key === "Escape") closePopup();
     });
 
-    $("#wc-plz-badge").on("click", openPopup);
+    // Badge click
+    var badge = $("#wc-plz-badge");
+    if (badge) {
+      badge.addEventListener("click", openPopup);
+    }
 
+    // Checkout: sync postcode changes
     if (parseInt(D.isCheckout, 10)) {
-      $(document).on("change", "#billing_postcode", function () {
-        var newPlz = $(this).val().replace(/\D/g, "");
+      document.addEventListener("change", function (e) {
+        if (!e.target || e.target.id !== "billing_postcode") return;
+        var newPlz = e.target.value.replace(/\D/g, "");
         if (/^\d{5}$/.test(newPlz) && newPlz !== state.plz && state.mode) {
           state.plz = newPlz;
           setCookie(COOKIE, state.mode + ":" + newPlz, DAYS);
-          $.post(D.ajaxUrl, {
+          post(D.ajaxUrl, {
             action: "wc_plz_save",
             nonce: D.nonce,
             mode: state.mode,
@@ -288,5 +387,12 @@
         }
       });
     }
-  });
-})(jQuery);
+  }
+
+  // Run when DOM is ready
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
+})();
