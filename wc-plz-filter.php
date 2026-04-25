@@ -103,17 +103,17 @@ final class WC_PLZ_Filter {
         $this->settings_cache = wp_parse_args( get_option( self::OPT, [] ), [
             'excluded_classes'       => [],
             'cookie_days'            => 30,
-            'popup_title'            => 'Wie moechten Sie bestellen?',
-            'popup_text'             => 'Geben Sie Ihre Postleitzahl ein, um zu pruefen ob wir zu Ihnen liefern, oder waehlen Sie Abholung in unserer Filiale.',
-            'post_msg'               => 'Fuer Ihre PLZ ist Postversand verfuegbar. Einige Frischeprodukte sind bei Versand nicht erhaeltlich.',
+            'popup_title'            => 'Wie möchten Sie bestellen?',
+            'popup_text'             => 'Geben Sie Ihre Postleitzahl ein, um zu prüfen ob wir zu Ihnen liefern, oder wählen Sie Abholung in unserer Filiale.',
+            'post_msg'               => 'Für Ihre PLZ ist Postversand verfügbar. Einige Frischeprodukte sind bei Versand nicht erhältlich.',
             'popup_color'            => '#cc0000',
             'badge_position'         => 'bottom-right',
             'badge_rotate'           => 0,
             'badge_offset_x'         => 0,
             'badge_offset_y'         => 0,
             'badge_tooltip_abholung' => 'Mit dieser Auswahl bestellen Sie zur Abholung in einem unserer Ladengeschäfte. Zum Ändern klicken.',
-            'badge_tooltip_local'    => 'Mit dieser Auswahl bestellen Sie Ihre Ware zur lokalen Auslieferung. Diese wird vom Team der Metzgerei Fischer durchgeführt. Zum Ändern klicken.',
-            'badge_tooltip_post'     => 'Mit der ausgewählten PLZ ist nur ein Postversand möglich. Das Sortiment ist möglicherweise eingeschränkt. Zum Ändern bitte klicken.',
+            'badge_tooltip_local'    => 'Für Ihre PLZ ist lokale Auslieferung verfügbar. Das Team der Metzgerei Fischer beliefert Sie persönlich. Zum Ändern klicken.',
+            'badge_tooltip_post'     => 'Für Ihre PLZ ist Postversand verfügbar. Einige Frischeprodukte sind bei Versand nicht erhältlich und werden Ihnen nicht angezeigt. Zum Ändern bitte klicken.',
         ] );
 
         return $this->settings_cache;
@@ -232,7 +232,7 @@ final class WC_PLZ_Filter {
         return ! empty( $state['plz'] ) ? $state['plz'] : $value;
     }
 
-    /* --- AJAX: PLZ pruefen --- */
+    /* --- AJAX: PLZ prüfen --- */
 
     public function ajax_check(): void {
         check_ajax_referer( 'wc_plz_nonce', 'nonce' );
@@ -240,7 +240,7 @@ final class WC_PLZ_Filter {
         $plz = preg_replace( '/\D/', '', sanitize_text_field( wp_unslash( $_POST['plz'] ?? '' ) ) );
 
         if ( strlen( $plz ) !== 5 ) {
-            wp_send_json_error( [ 'message' => 'Bitte eine gueltige 5-stellige PLZ eingeben.' ] );
+            wp_send_json_error( [ 'message' => 'Bitte eine gültige 5-stellige PLZ eingeben.' ] );
         }
 
         $local    = $this->is_local( $plz );
@@ -265,7 +265,7 @@ final class WC_PLZ_Filter {
         $plz  = preg_replace( '/\D/', '', sanitize_text_field( wp_unslash( $_POST['plz'] ?? '' ) ) );
 
         if ( ! in_array( $mode, [ 'abholung', 'local', 'post' ], true ) ) {
-            wp_send_json_error( [ 'message' => 'Ungueltiger Modus.' ] );
+            wp_send_json_error( [ 'message' => 'Ungültiger Modus.' ] );
         }
 
         $settings = $this->get_settings();
@@ -352,7 +352,7 @@ final class WC_PLZ_Filter {
                 <div class="wc-plz-modal__body">
                     <p class="wc-plz-modal__text"><?php echo esc_html( $s['popup_text'] ); ?></p>
                     <div class="wc-plz-section">
-                        <label class="wc-plz-label" for="wc-plz-input">Postleitzahl fuer Lieferung / Versand</label>
+                        <label class="wc-plz-label" for="wc-plz-input">Postleitzahl für Lieferung / Versand</label>
                         <div class="wc-plz-input-row">
                             <input type="text" id="wc-plz-input" class="wc-plz-input" maxlength="5" inputmode="numeric" pattern="[0-9]{5}" placeholder="z. B. 63667" autocomplete="postal-code" />
                             <button id="wc-plz-submit" class="wc-plz-btn wc-plz-btn--primary">Prüfen</button>
@@ -558,7 +558,7 @@ final class WC_PLZ_Filter {
                 <?php wp_nonce_field( 'wc_plz_test' ); ?>
                 <p>
                     <input type="text" name="test_plz" maxlength="5" placeholder="z. B. 63667" style="width:120px;" />
-                    <?php submit_button( 'Pruefen', 'secondary', 'submit', false ); ?>
+                    <?php submit_button( 'Prüfen', 'secondary', 'submit', false ); ?>
                 </p>
             </form>
         </div>
