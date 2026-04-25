@@ -228,14 +228,23 @@
     fadeIn(badge, 300);
   }
 
-  /* ── Checkout Prefill ───────────────────────── */
+  /* ── Prefill PLZ (Checkout + Cart) ──────────── */
 
-  function prefillCheckout() {
-    if (!parseInt(D.isCheckout, 10) || !state.plz) return;
-    var f = $("#billing_postcode");
-    if (f && !f.value) {
-      f.value = state.plz;
-      f.dispatchEvent(new Event("change", { bubbles: true }));
+  function prefillPostcode() {
+    if (!state.plz) return;
+
+    // Checkout: billing_postcode
+    var billing = $("#billing_postcode");
+    if (billing && !billing.value) {
+      billing.value = state.plz;
+      billing.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+
+    // Cart: shipping calculator postcode
+    var calcShipping = $("#calc_shipping_postcode");
+    if (calcShipping && !calcShipping.value) {
+      calcShipping.value = state.plz;
+      calcShipping.dispatchEvent(new Event("change", { bubbles: true }));
     }
   }
 
@@ -306,7 +315,7 @@
       setTimeout(openPopup, 800);
     }
 
-    prefillCheckout();
+    prefillPostcode();
 
     // Submit button
     var submitBtn = $("#wc-plz-submit");
@@ -388,6 +397,20 @@
       });
     }
   }
+
+  /* ── bfcache: re-sync on back/forward navigation ── */
+
+  window.addEventListener("pageshow", function (e) {
+    if (e.persisted) {
+      // Page was restored from bfcache — re-read cookie
+      var fresh = parseState();
+      if (fresh.mode !== state.mode || fresh.plz !== state.plz) {
+        state = fresh;
+        updateBadge(state.mode, state.plz);
+        prefillPostcode();
+      }
+    }
+  });
 
   // Run when DOM is ready
   if (document.readyState === "loading") {
