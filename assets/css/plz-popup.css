@@ -1,4 +1,4 @@
-/* WC PLZ-Filter v2.3 */
+/* WC PLZ-Filter v2.4 */
 
 /* Overlay */
 .wc-plz-overlay {
@@ -206,7 +206,7 @@
   text-align: center;
 }
 
-/* ─── Badge v2.3: always-expanded pill ───────── */
+/* ─── Badge v2.4: always-expanded pill ───────── */
 
 @keyframes wc-plz-badge-in {
   0% {
@@ -463,34 +463,39 @@
 
 /* ─── Badge positions ────────────────────────── */
 
-/* Corner positions */
-.wc-plz-badge--bottom-right {
-  bottom: 24px;
-  right: 24px;
-}
-.wc-plz-badge--bottom-left {
-  bottom: 24px;
-  left: 24px;
-}
-.wc-plz-badge--top-right {
-  top: 24px;
-  right: 24px;
-}
-.wc-plz-badge--top-left {
-  top: 24px;
-  left: 24px;
+/* Offset custom properties (set via inline style from admin) */
+.wc-plz-badge {
+  --wc-plz-offset-x: 0px;
+  --wc-plz-offset-y: 0px;
 }
 
-/* New: bottom-center */
+/* Corner positions */
+.wc-plz-badge--bottom-right {
+  bottom: calc(24px - var(--wc-plz-offset-y));
+  right: calc(24px - var(--wc-plz-offset-x));
+}
+.wc-plz-badge--bottom-left {
+  bottom: calc(24px - var(--wc-plz-offset-y));
+  left: calc(24px + var(--wc-plz-offset-x));
+}
+.wc-plz-badge--top-right {
+  top: calc(24px + var(--wc-plz-offset-y));
+  right: calc(24px - var(--wc-plz-offset-x));
+}
+.wc-plz-badge--top-left {
+  top: calc(24px + var(--wc-plz-offset-y));
+  left: calc(24px + var(--wc-plz-offset-x));
+}
+
+/* bottom-center */
 .wc-plz-badge--bottom-center {
-  bottom: 24px;
-  left: 50%;
+  bottom: calc(24px - var(--wc-plz-offset-y));
+  left: calc(50% + var(--wc-plz-offset-x));
   transform: translateX(-50%);
 }
 .wc-plz-badge--bottom-center:hover .wc-plz-badge__pill {
   transform: scale(1.03);
 }
-/* Override entrance animation */
 .wc-plz-badge--bottom-center {
   animation: wc-plz-badge-in-bc 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
@@ -509,28 +514,38 @@
   }
 }
 
-/* New: left-center (vertical, rotated) */
+/* left-center: horizontal by default */
 .wc-plz-badge--left-center {
-  left: 24px;
-  top: 50%;
-  transform: rotate(-90deg) translateX(50%);
-  transform-origin: left center;
-  animation: wc-plz-badge-in-left 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+  left: calc(24px + var(--wc-plz-offset-x));
+  top: calc(50% + var(--wc-plz-offset-y));
+  transform: translateY(-50%);
 }
 .wc-plz-badge--left-center:hover .wc-plz-badge__pill {
   transform: scale(1.03);
 }
 
-/* New: right-center (vertical, rotated) */
+/* right-center: horizontal by default */
 .wc-plz-badge--right-center {
-  right: 24px;
-  top: 50%;
-  transform: rotate(90deg) translateX(-50%);
-  transform-origin: right center;
-  animation: wc-plz-badge-in-right 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+  right: calc(24px - var(--wc-plz-offset-x));
+  top: calc(50% + var(--wc-plz-offset-y));
+  transform: translateY(-50%);
 }
 .wc-plz-badge--right-center:hover .wc-plz-badge__pill {
   transform: scale(1.03);
+}
+
+/* ─── Rotation modifier (opt-in via admin) ───── */
+
+.wc-plz-badge--rotated.wc-plz-badge--left-center {
+  transform: rotate(-90deg) translateX(50%);
+  transform-origin: left center;
+  animation: wc-plz-badge-in-left 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.wc-plz-badge--rotated.wc-plz-badge--right-center {
+  transform: rotate(90deg) translateX(-50%);
+  transform-origin: right center;
+  animation: wc-plz-badge-in-right 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 /* ─── Responsive ─────────────────────────────── */
@@ -582,29 +597,29 @@
   }
 
   .wc-plz-badge--bottom-right {
-    bottom: 16px;
-    right: 16px;
+    bottom: calc(16px - var(--wc-plz-offset-y));
+    right: calc(16px - var(--wc-plz-offset-x));
   }
   .wc-plz-badge--bottom-left {
-    bottom: 16px;
-    left: 16px;
+    bottom: calc(16px - var(--wc-plz-offset-y));
+    left: calc(16px + var(--wc-plz-offset-x));
   }
   .wc-plz-badge--top-right {
-    top: 16px;
-    right: 16px;
+    top: calc(16px + var(--wc-plz-offset-y));
+    right: calc(16px - var(--wc-plz-offset-x));
   }
   .wc-plz-badge--top-left {
-    top: 16px;
-    left: 16px;
+    top: calc(16px + var(--wc-plz-offset-y));
+    left: calc(16px + var(--wc-plz-offset-x));
   }
   .wc-plz-badge--bottom-center {
-    bottom: 16px;
+    bottom: calc(16px - var(--wc-plz-offset-y));
   }
   .wc-plz-badge--left-center {
-    left: 16px;
+    left: calc(16px + var(--wc-plz-offset-x));
   }
   .wc-plz-badge--right-center {
-    right: 16px;
+    right: calc(16px - var(--wc-plz-offset-x));
   }
 
   /* Hide "ändern" on mobile – tap is obvious */

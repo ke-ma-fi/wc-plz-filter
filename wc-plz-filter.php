@@ -23,7 +23,7 @@ defined( 'ABSPATH' ) || exit;
 
 final class WC_PLZ_Filter {
 
-    const VERSION = '2.3.0';
+    const VERSION = '2.4.0';
     const COOKIE  = 'wc_delivery_mode';
     const OPT     = 'wc_plz_filter_v2';
     const CACHE   = 'wc_plz_local_codes';
@@ -102,6 +102,9 @@ final class WC_PLZ_Filter {
             'post_msg'               => 'Fuer Ihre PLZ ist Postversand verfuegbar. Einige Frischeprodukte sind bei Versand nicht erhaeltlich.',
             'popup_color'            => '#cc0000',
             'badge_position'         => 'bottom-right',
+            'badge_rotate'           => 0,
+            'badge_offset_x'         => 0,
+            'badge_offset_y'         => 0,
             'badge_tooltip_abholung' => 'Mit dieser Auswahl bestellen Sie zur Abholung in einem unserer Ladengeschäfte. Zum Ändern klicken.',
             'badge_tooltip_local'    => 'Mit dieser Auswahl bestellen Sie Ihre Ware zur lokalen Auslieferung. Diese wird vom Team der Metzgerei Fischer durchgeführt. Zum Ändern klicken.',
             'badge_tooltip_post'     => 'Mit der ausgewählten PLZ ist nur ein Postversand möglich. Das Sortiment ist möglicherweise eingeschränkt. Zum Ändern bitte klicken.',
@@ -301,8 +304,26 @@ final class WC_PLZ_Filter {
         }
 
         $s = $this->get_settings();
-        $color = esc_attr( $s['popup_color'] );
+        $color     = esc_attr( $s['popup_color'] );
         $badge_pos = esc_attr( $s['badge_position'] );
+        $rotate    = ! empty( $s['badge_rotate'] );
+        $offset_x  = (int) $s['badge_offset_x'];
+        $offset_y  = (int) $s['badge_offset_y'];
+
+        // Build badge CSS classes
+        $badge_classes = 'wc-plz-badge wc-plz-badge--' . $badge_pos;
+        if ( $rotate && in_array( $badge_pos, [ 'left-center', 'right-center' ], true ) ) {
+            $badge_classes .= ' wc-plz-badge--rotated';
+        }
+
+        // Build inline style for offsets
+        $badge_style = 'display:none;';
+        if ( $offset_x !== 0 ) {
+            $badge_style .= '--wc-plz-offset-x:' . $offset_x . 'px;';
+        }
+        if ( $offset_y !== 0 ) {
+            $badge_style .= '--wc-plz-offset-y:' . $offset_y . 'px;';
+        }
         ?>
         <style>:root{--wc-plz-color:<?php echo $color; ?>;}</style>
         <div id="wc-plz-overlay" class="wc-plz-overlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="wc-plz-title">
@@ -328,7 +349,7 @@ final class WC_PLZ_Filter {
                 </div>
             </div>
         </div>
-        <button id="wc-plz-badge" class="wc-plz-badge wc-plz-badge--<?php echo $badge_pos; ?>" style="display:none;" aria-label="Bestellmodus ändern">
+        <button id="wc-plz-badge" class="<?php echo esc_attr( $badge_classes ); ?>" style="<?php echo esc_attr( $badge_style ); ?>" aria-label="Bestellmodus ändern">
             <span class="wc-plz-badge__pill">
                 <span class="wc-plz-badge__dot"></span>
                 <span id="wc-plz-badge-icon" class="wc-plz-badge__icon"></span>
@@ -364,6 +385,9 @@ final class WC_PLZ_Filter {
             'post_msg'               => sanitize_textarea_field( $input['post_msg'] ?? '' ),
             'popup_color'            => sanitize_hex_color( $input['popup_color'] ?? '#cc0000' ) ?: '#cc0000',
             'badge_position'         => in_array( $pos, $valid_pos, true ) ? $pos : 'bottom-right',
+            'badge_rotate'           => ! empty( $input['badge_rotate'] ) ? 1 : 0,
+            'badge_offset_x'         => (int) ( $input['badge_offset_x'] ?? 0 ),
+            'badge_offset_y'         => (int) ( $input['badge_offset_y'] ?? 0 ),
             'badge_tooltip_abholung' => sanitize_textarea_field( $input['badge_tooltip_abholung'] ?? '' ),
             'badge_tooltip_local'    => sanitize_textarea_field( $input['badge_tooltip_local'] ?? '' ),
             'badge_tooltip_post'     => sanitize_textarea_field( $input['badge_tooltip_post'] ?? '' ),
@@ -451,6 +475,28 @@ final class WC_PLZ_Filter {
                             <?php endforeach; ?>
                             </select>
                             <p class="description">Position der Status-Bubble im Shop.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Badge vertikal drehen</th>
+                        <td>
+                            <label>
+                                <input type="checkbox" name="<?php echo esc_attr( $opt ); ?>[badge_rotate]" value="1" <?php checked( $settings['badge_rotate'], 1 ); ?> />
+                                Text vertikal anzeigen (nur bei <em>Links mittig</em> / <em>Rechts mittig</em>)
+                            </label>
+                            <p class="description">Wenn aktiviert, wird die Badge bei seitlicher Platzierung um 90° gedreht.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Badge-Offset</th>
+                        <td>
+                            <label style="margin-right:16px;">
+                                Horizontal: <input type="number" name="<?php echo esc_attr( $opt ); ?>[badge_offset_x]" value="<?php echo esc_attr( $settings['badge_offset_x'] ); ?>" class="small-text" style="width:70px;" /> px
+                            </label>
+                            <label>
+                                Vertikal: <input type="number" name="<?php echo esc_attr( $opt ); ?>[badge_offset_y]" value="<?php echo esc_attr( $settings['badge_offset_y'] ); ?>" class="small-text" style="width:70px;" /> px
+                            </label>
+                            <p class="description">Feinkorrektur der Badge-Position. Positiv = nach rechts/unten, Negativ = nach links/oben.</p>
                         </td>
                     </tr>
                 </table>
