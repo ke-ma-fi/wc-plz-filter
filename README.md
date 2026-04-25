@@ -28,7 +28,7 @@ A lightweight WooCommerce plugin for German online shops that presents customers
 ## Installation
 
 1. Download or clone this repository.
-2. Copy the plugin folder (or upload `wp-plz-filter.zip`) to `wp-content/plugins/`.
+2. Copy the plugin folder (or upload `wc-plz-filter.zip`) to `wp-content/plugins/`.
 3. Activate **WC PLZ-Filter** in *Plugins → Installed Plugins*.
 4. Go to **WooCommerce → PLZ-Filter** to configure the plugin.
 
@@ -43,7 +43,10 @@ Navigate to **WooCommerce → PLZ-Filter** in the WordPress admin:
 | Popup title / text | Customise the headline and body copy of the selection popup |
 | Postal-shipping notice | Message shown when the entered postcode is outside the local delivery area |
 | Accent colour | Colour used for the popup header and primary button |
-| Badge position | Where the floating status badge appears (corner of the viewport) |
+| Badge position | Where the floating status badge appears: `bottom-right`, `bottom-left`, `top-right`, `top-left`, `bottom-center`, `left-center`, `right-center` |
+| Badge rotate | Rotates the badge 90° – useful for `left-center` / `right-center` positions |
+| Badge offset (X / Y) | Fine-tunes the badge position in pixels |
+| Badge tooltips | Hover text shown on the badge for each of the three modes |
 
 ### Shipping zone setup
 

@@ -351,7 +351,7 @@ final class WC_PLZ_Filter {
             $badge_style .= '--wc-plz-offset-y:' . $offset_y . 'px;';
         }
         ?>
-        <style>:root{--wc-plz-color:<?php echo $color; ?>;}</style>
+        <style>:root{--wc-plz-color:<?php echo esc_html( $color ); ?>;}</style>
         <div id="wc-plz-overlay" class="wc-plz-overlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="wc-plz-title">
             <div class="wc-plz-modal">
                 <div class="wc-plz-modal__header">

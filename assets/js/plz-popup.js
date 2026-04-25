@@ -337,18 +337,17 @@
     var pickupBtn = $("#wc-plz-pickup");
     if (pickupBtn) {
       pickupBtn.addEventListener("click", function () {
-        btn = $("#wc-plz-submit");
+        var btn = $("#wc-plz-submit");
         if (btn) btn.disabled = true;
 
-        saveState("abholung", "", function() {
-          state = { mode: "abholung", plz: "" };
-          updateBadge("abholung", "");
-          
-          setTimeout(function () {
-            closePopup();
-            location.reload();
-          }, 300);
-        });
+        saveState("abholung", "");
+        state = { mode: "abholung", plz: "" };
+        updateBadge("abholung", "");
+
+        setTimeout(function () {
+          closePopup();
+          location.reload();
+        }, 300);
       });
     }
 
