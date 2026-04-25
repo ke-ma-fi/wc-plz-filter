@@ -85,6 +85,3 @@ Abholung    Enter PLZ      (skip)
 
 Deactivating and deleting the plugin via WordPress removes all stored options and transients automatically (`uninstall.php`).
 
-## License
-
-[GPL-2.0-or-later](LICENSE)
