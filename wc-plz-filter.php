@@ -273,8 +273,9 @@ final class WC_PLZ_Filter {
 
         $this->set_cookie( $mode . ':' . $plz, $days );
 
-        // Sync PLZ into WooCommerce customer session (for cart & checkout prefill)
-        if ( ! empty( $plz ) && function_exists( 'WC' ) && WC()->customer ) {
+        // Sync PLZ into WooCommerce customer session (cart & checkout)
+        // For Abholung: clear the postcode so the cart doesn't show a stale PLZ
+        if ( function_exists( 'WC' ) && WC()->customer ) {
             WC()->customer->set_billing_postcode( $plz );
             WC()->customer->set_shipping_postcode( $plz );
             WC()->customer->save();

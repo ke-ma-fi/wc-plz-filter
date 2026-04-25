@@ -228,27 +228,20 @@
     fadeIn(badge, 300);
   }
 
-  /* ── Prefill PLZ (Checkout + Cart) ──────────── */
+  /* ── Prefill PLZ (JS fallback for checkout) ── */
 
   function prefillPostcode() {
     if (!state.plz) return;
 
-    // Checkout: billing_postcode
+    // Checkout: billing_postcode (fallback — PHP session sync handles most cases)
     var billing = $("#billing_postcode");
     if (billing && !billing.value) {
       billing.value = state.plz;
       billing.dispatchEvent(new Event("change", { bubbles: true }));
     }
-
-    // Cart: shipping calculator postcode
-    var calcShipping = $("#calc_shipping_postcode");
-    if (calcShipping && !calcShipping.value) {
-      calcShipping.value = state.plz;
-      calcShipping.dispatchEvent(new Event("change", { bubbles: true }));
-    }
   }
 
-  /* ── PLZ pruefen ────────────────────────────── */
+  /* ── PLZ prüfen ─────────────────────────────── */
 
   function handlePlzSubmit() {
     var btn = $("#wc-plz-submit");
