@@ -3,7 +3,7 @@
  * Plugin Name:  WC PLZ-Filter
  * Plugin URI:   https://fischer.digitale-theke.com
  * Description:  PLZ-Popup mit drei Modi (Abholung, Lokale Lieferung, Postversand). Filtert Produkte dynamisch nach WooCommerce-Versandklassen und füllt den Checkout vor.
- * Version:      2.3.0
+ * Version:      2.4.0
  * Author:       Metzgerei Fischer
  * License:      Proprietary
  * License URI:  https://fischer.digitale-theke.com
@@ -29,6 +29,7 @@ final class WC_PLZ_Filter {
     const CACHE   = 'wc_plz_local_codes';
 
     private static ?self $instance = null;
+    private ?array $settings_cache = null;
 
     public static function instance(): self {
         return self::$instance ??= new self();
@@ -55,6 +56,7 @@ final class WC_PLZ_Filter {
 
         add_action( 'wp_enqueue_scripts', [ $this, 'enqueue' ] );
         add_action( 'wp_footer',          [ $this, 'render_popup' ] );
+        add_filter( 'script_loader_tag',  [ $this, 'defer_script' ], 10, 2 );
 
         add_action( 'woocommerce_product_query',      [ $this, 'filter_products' ] );
         add_filter( 'woocommerce_checkout_get_value',  [ $this, 'prefill_checkout' ], 10, 2 );
@@ -94,7 +96,11 @@ final class WC_PLZ_Filter {
     /* --- Settings --- */
 
     private function get_settings(): array {
-        return wp_parse_args( get_option( self::OPT, [] ), [
+        if ( $this->settings_cache !== null ) {
+            return $this->settings_cache;
+        }
+
+        $this->settings_cache = wp_parse_args( get_option( self::OPT, [] ), [
             'excluded_classes'       => [],
             'cookie_days'            => 30,
             'popup_title'            => 'Wie moechten Sie bestellen?',
@@ -109,6 +115,8 @@ final class WC_PLZ_Filter {
             'badge_tooltip_local'    => 'Mit dieser Auswahl bestellen Sie Ihre Ware zur lokalen Auslieferung. Diese wird vom Team der Metzgerei Fischer durchgeführt. Zum Ändern klicken.',
             'badge_tooltip_post'     => 'Mit der ausgewählten PLZ ist nur ein Postversand möglich. Das Sortiment ist möglicherweise eingeschränkt. Zum Ändern bitte klicken.',
         ] );
+
+        return $this->settings_cache;
     }
 
     /* --- Dynamische Zonen-Erkennung --- */
@@ -129,7 +137,7 @@ final class WC_PLZ_Filter {
             }
         }
 
-        set_transient( self::CACHE, $codes, HOUR_IN_SECONDS );
+        set_transient( self::CACHE, $codes, 12 * HOUR_IN_SECONDS );
         return $codes;
     }
 
@@ -294,6 +302,16 @@ final class WC_PLZ_Filter {
             'badgeTooltipLocal'    => $settings['badge_tooltip_local'],
             'badgeTooltipPost'     => $settings['badge_tooltip_post'],
         ] );
+    }
+
+    /**
+     * Add defer attribute to our script to avoid render-blocking.
+     */
+    public function defer_script( string $tag, string $handle ): string {
+        if ( $handle === 'wc-plz-filter' ) {
+            return str_replace( ' src', ' defer src', $tag );
+        }
+        return $tag;
     }
 
     /* --- Frontend: Popup HTML --- */
