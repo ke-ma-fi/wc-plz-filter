@@ -86,13 +86,23 @@ final class WC_PLZ_Stats {
             ],
             [ '%s', '%s', '%s' ]
         );
-        delete_transient( self::CACHE_KEY );
+        $this->bump_cache();
+    }
+
+    /* ── Cache-Invalidierung via Epoch ───────────── */
+
+    private function cache_epoch(): int {
+        return (int) get_option( 'wc_plz_stats_epoch', 0 );
+    }
+
+    private function bump_cache(): void {
+        update_option( 'wc_plz_stats_epoch', $this->cache_epoch() + 1 );
     }
 
     /* ── Aggregierte Stats abrufen ───────────────── */
 
     public function get_aggregated( string $from = '', string $to = '' ): array {
-        $cache_key = self::CACHE_KEY . '_' . md5( $from . '|' . $to );
+        $cache_key = 'wplzs_' . $this->cache_epoch() . '_' . md5( $from . '|' . $to );
         $cached    = get_transient( $cache_key );
         if ( is_array( $cached ) ) {
             return $cached;
@@ -168,7 +178,7 @@ final class WC_PLZ_Stats {
             ) );
         }
 
-        delete_transient( self::CACHE_KEY );
+        $this->bump_cache();
     }
 
     /* ── REST API ────────────────────────────────── */
@@ -353,8 +363,8 @@ final class WC_PLZ_Stats {
         check_admin_referer( 'wc_plz_stats_reset' );
 
         global $wpdb;
-        $wpdb->query( "TRUNCATE TABLE `" . $this->table_name() . "`" );
-        delete_transient( self::CACHE_KEY );
+        $wpdb->query( "DELETE FROM `" . $this->table_name() . "`" );
+        $this->bump_cache();
 
         wp_safe_redirect( add_query_arg( 'wc_plz_stats_reset_done', '1', admin_url( 'admin.php?page=wc-plz-filter' ) ) );
         exit;

@@ -369,17 +369,27 @@
       });
     }
 
+    // Overlay click + Escape: save skipped only if no state set yet
+    function handleDismiss() {
+      if (!state.mode) {
+        saveState("skipped", "");
+        state = { mode: "skipped", plz: "" };
+        updateBadge("skipped", "");
+      }
+      closePopup();
+    }
+
     // Overlay click
     var overlay = $("#wc-plz-overlay");
     if (overlay) {
       overlay.addEventListener("click", function (e) {
-        if (e.target === overlay) closePopup();
+        if (e.target === overlay) handleDismiss();
       });
     }
 
     // Escape key
     document.addEventListener("keydown", function (e) {
-      if (e.key === "Escape") closePopup();
+      if (e.key === "Escape") handleDismiss();
     });
 
     // Badge click
