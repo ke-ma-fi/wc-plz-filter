@@ -99,7 +99,7 @@
     if (!raw) return { mode: "", plz: "" };
     var parts = raw.split(":");
     var m = parts[0] || "";
-    if (m !== "abholung" && m !== "local" && m !== "post") {
+    if (m !== "abholung" && m !== "local" && m !== "post" && m !== "skipped") {
       m = "";
     }
     return {
@@ -191,6 +191,7 @@
       "wc-plz-badge--abholung",
       "wc-plz-badge--local",
       "wc-plz-badge--post",
+      "wc-plz-badge--skipped",
     );
 
     // Set tooltip direction
@@ -222,6 +223,12 @@
             plz + ' <span class="wc-plz-badge__sep">\u00B7</span> Versand';
         if (tooltip) tooltip.textContent = D.badgeTooltipPost || "";
         badge.classList.add("wc-plz-badge--post");
+        break;
+      case "skipped":
+        if (icon) icon.textContent = "\uD83D\uDCCD";
+        if (info) info.textContent = "Kein Filter gesetzt";
+        if (tooltip) tooltip.textContent = D.badgeTooltipSkipped || "";
+        badge.classList.add("wc-plz-badge--skipped");
         break;
     }
 
@@ -354,7 +361,12 @@
     // Skip button
     var skipBtn = $("#wc-plz-skip");
     if (skipBtn) {
-      skipBtn.addEventListener("click", closePopup);
+      skipBtn.addEventListener("click", function () {
+        saveState("skipped", "");
+        state = { mode: "skipped", plz: "" };
+        updateBadge("skipped", "");
+        closePopup();
+      });
     }
 
     // Overlay click

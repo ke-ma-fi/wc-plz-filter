@@ -461,6 +461,18 @@
   border-left-color: #333;
 }
 
+/* ─── Badge: skipped state (neutral/grey) ────── */
+
+.wc-plz-badge--skipped .wc-plz-badge__pill {
+  border-left-color: #999;
+}
+.wc-plz-badge--skipped .wc-plz-badge__dot {
+  background: #999;
+}
+.wc-plz-badge--skipped .wc-plz-badge__info {
+  color: #555;
+}
+
 /* ─── Badge positions ────────────────────────── */
 
 /* Offset custom properties (set via inline style from admin) */

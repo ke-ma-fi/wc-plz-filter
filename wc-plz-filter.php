@@ -3,7 +3,7 @@
  * Plugin Name:  WC PLZ-Filter
  * Plugin URI:   https://fischer.digitale-theke.com
  * Description:  PLZ-Popup mit drei Modi (Abholung, Lokale Lieferung, Postversand). Filtert Produkte dynamisch nach WooCommerce-Versandklassen und füllt den Checkout vor.
- * Version:      2.4.0
+ * Version:      2.5.0
  * Author:       Metzgerei Fischer
  * License:      Proprietary
  * License URI:  https://fischer.digitale-theke.com
@@ -23,7 +23,7 @@ defined( 'ABSPATH' ) || exit;
 
 final class WC_PLZ_Filter {
 
-    const VERSION = '2.4.0';
+    const VERSION = '2.5.0';
     const COOKIE  = 'wc_delivery_mode';
     const OPT     = 'wc_plz_filter_v2';
     const CACHE   = 'wc_plz_local_codes';
@@ -50,6 +50,7 @@ final class WC_PLZ_Filter {
 
         add_action( 'admin_menu', [ $this, 'admin_menu' ] );
         add_action( 'admin_init', [ $this, 'register_settings' ] );
+        add_action( 'admin_init', [ $this, 'handle_admin_reset' ] );
 
         add_action( 'woocommerce_after_shipping_zone_object_save', fn() => delete_transient( self::CACHE ) );
         add_action( 'woocommerce_delete_shipping_zone', fn() => delete_transient( self::CACHE ) );
@@ -114,6 +115,7 @@ final class WC_PLZ_Filter {
             'badge_tooltip_abholung' => 'Mit dieser Auswahl bestellen Sie zur Abholung in einem unserer Ladengeschäfte. Zum Ändern klicken.',
             'badge_tooltip_local'    => 'Für Ihre PLZ ist lokale Auslieferung verfügbar. Das Team der Metzgerei Fischer beliefert Sie persönlich. Zum Ändern klicken.',
             'badge_tooltip_post'     => 'Für Ihre PLZ ist Postversand verfügbar. Einige Frischeprodukte sind bei Versand nicht erhältlich und werden Ihnen nicht angezeigt. Zum Ändern bitte klicken.',
+            'badge_tooltip_skipped'  => 'Noch keine Lieferoption gewählt – klicken Sie hier, um Ihre PLZ einzugeben und die passenden Produkte zu sehen.',
         ] );
 
         return $this->settings_cache;
@@ -264,7 +266,7 @@ final class WC_PLZ_Filter {
         $mode = sanitize_text_field( wp_unslash( $_POST['mode'] ?? '' ) );
         $plz  = preg_replace( '/\D/', '', sanitize_text_field( wp_unslash( $_POST['plz'] ?? '' ) ) );
 
-        if ( ! in_array( $mode, [ 'abholung', 'local', 'post' ], true ) ) {
+        if ( ! in_array( $mode, [ 'abholung', 'local', 'post', 'skipped' ], true ) ) {
             wp_send_json_error( [ 'message' => 'Ungültiger Modus.' ] );
         }
 
@@ -274,10 +276,10 @@ final class WC_PLZ_Filter {
         $this->set_cookie( $mode . ':' . $plz, $days );
 
         // Sync PLZ into WooCommerce customer session (cart & checkout)
-        // For Abholung: clear the postcode so the cart doesn't show a stale PLZ
+        $wc_plz = in_array( $mode, [ 'abholung', 'skipped' ], true ) ? '' : $plz;
         if ( function_exists( 'WC' ) && WC()->customer ) {
-            WC()->customer->set_billing_postcode( $plz );
-            WC()->customer->set_shipping_postcode( $plz );
+            WC()->customer->set_billing_postcode( $wc_plz );
+            WC()->customer->set_shipping_postcode( $wc_plz );
             WC()->customer->save();
         }
 
@@ -309,6 +311,7 @@ final class WC_PLZ_Filter {
             'badgeTooltipAbholung' => $settings['badge_tooltip_abholung'],
             'badgeTooltipLocal'    => $settings['badge_tooltip_local'],
             'badgeTooltipPost'     => $settings['badge_tooltip_post'],
+            'badgeTooltipSkipped'  => $settings['badge_tooltip_skipped'],
         ] );
     }
 
@@ -389,6 +392,33 @@ final class WC_PLZ_Filter {
 
     /* --- Admin --- */
 
+    public function handle_admin_reset(): void {
+        if ( ! isset( $_POST['wc_plz_reset'] ) ) {
+            return;
+        }
+        if ( ! current_user_can( 'manage_woocommerce' ) ) {
+            return;
+        }
+        check_admin_referer( 'wc_plz_reset' );
+
+        setcookie( self::COOKIE, '', [
+            'expires'  => time() - 3600,
+            'path'     => '/',
+            'secure'   => is_ssl(),
+            'httponly' => false,
+            'samesite' => 'Lax',
+        ] );
+
+        if ( function_exists( 'WC' ) && WC()->customer ) {
+            WC()->customer->set_billing_postcode( '' );
+            WC()->customer->set_shipping_postcode( '' );
+            WC()->customer->save();
+        }
+
+        wp_safe_redirect( add_query_arg( 'wc_plz_reset_done', '1', admin_url( 'admin.php?page=wc-plz-filter' ) ) );
+        exit;
+    }
+
     public function admin_menu(): void {
         add_submenu_page( 'woocommerce', 'PLZ-Filter', 'PLZ-Filter', 'manage_woocommerce', 'wc-plz-filter', [ $this, 'render_admin' ] );
     }
@@ -417,6 +447,7 @@ final class WC_PLZ_Filter {
             'badge_tooltip_abholung' => sanitize_textarea_field( $input['badge_tooltip_abholung'] ?? '' ),
             'badge_tooltip_local'    => sanitize_textarea_field( $input['badge_tooltip_local'] ?? '' ),
             'badge_tooltip_post'     => sanitize_textarea_field( $input['badge_tooltip_post'] ?? '' ),
+            'badge_tooltip_skipped'  => sanitize_textarea_field( $input['badge_tooltip_skipped'] ?? '' ),
         ];
     }
 
@@ -429,6 +460,8 @@ final class WC_PLZ_Filter {
         $classes     = WC()->shipping()->get_shipping_classes();
         $local_codes = $this->get_local_postcodes();
 
+        $reset_done = isset( $_GET['wc_plz_reset_done'] );
+
         $test_html = '';
         if ( isset( $_POST['test_plz'] ) && check_admin_referer( 'wc_plz_test' ) ) {
             $plz = preg_replace( '/\D/', '', sanitize_text_field( wp_unslash( $_POST['test_plz'] ) ) );
@@ -440,6 +473,9 @@ final class WC_PLZ_Filter {
         ?>
         <div class="wrap">
             <h1>PLZ-Filter</h1>
+            <?php if ( $reset_done ) : ?>
+                <div class="notice notice-success is-dismissible"><p>Cookie &amp; Session wurden zurückgesetzt.</p></div>
+            <?php endif; ?>
             <form method="post" action="options.php">
                 <?php settings_fields( 'wc_plz_filter_group' ); ?>
                 <table class="form-table">
@@ -548,6 +584,13 @@ final class WC_PLZ_Filter {
                             <textarea name="<?php echo esc_attr( $opt ); ?>[badge_tooltip_post]" rows="2" class="large-text"><?php echo esc_textarea( $settings['badge_tooltip_post'] ); ?></textarea>
                         </td>
                     </tr>
+                    <tr>
+                        <th>Tooltip: Kein Filter</th>
+                        <td>
+                            <textarea name="<?php echo esc_attr( $opt ); ?>[badge_tooltip_skipped]" rows="2" class="large-text"><?php echo esc_textarea( $settings['badge_tooltip_skipped'] ); ?></textarea>
+                            <p class="description">Wird angezeigt, wenn der Kunde das Popup übersprungen hat.</p>
+                        </td>
+                    </tr>
                 </table>
 
                 <?php submit_button( 'Speichern' ); ?>
@@ -568,6 +611,14 @@ final class WC_PLZ_Filter {
                     <input type="text" name="test_plz" maxlength="5" placeholder="z. B. 63667" style="width:120px;" />
                     <?php submit_button( 'Prüfen', 'secondary', 'submit', false ); ?>
                 </p>
+            </form>
+            <hr />
+            <h2>Entwickler-Reset</h2>
+            <p>Setzt den gespeicherten Auswahlstatus (Cookie &amp; WooCommerce-Session) für Ihren Browser zurück, sodass das Popup beim nächsten Seitenaufruf wieder erscheint. Nützlich für Tests.</p>
+            <form method="post">
+                <?php wp_nonce_field( 'wc_plz_reset' ); ?>
+                <input type="hidden" name="wc_plz_reset" value="1" />
+                <?php submit_button( 'Cookie &amp; Session zurücksetzen', 'delete', 'submit', false ); ?>
             </form>
         </div>
         <?php
