@@ -61,7 +61,7 @@ final class WC_PLZ_Filter {
 
         add_action( 'wp_enqueue_scripts', [ $this, 'enqueue' ] );
         add_action( 'wp_footer',          [ $this, 'render_popup' ] );
-        add_filter( 'script_loader_tag',  [ $this, 'defer_script' ], 10, 2 );
+
 
         add_action( 'woocommerce_product_query',      [ $this, 'filter_products' ] );
         add_filter( 'woocommerce_checkout_get_value',  [ $this, 'prefill_checkout' ], 10, 2 );
@@ -306,7 +306,10 @@ final class WC_PLZ_Filter {
         $settings = $this->get_settings();
 
         wp_enqueue_style( 'wc-plz-filter', $url . 'assets/css/plz-popup.css', [], self::VERSION );
-        wp_enqueue_script( 'wc-plz-filter', $url . 'assets/js/plz-popup.js', [], self::VERSION, true );
+        wp_enqueue_script( 'wc-plz-filter', $url . 'assets/js/plz-popup.js', [], self::VERSION, [
+            'in_footer' => true,
+            'strategy'  => 'defer',
+        ] );
 
         wp_localize_script( 'wc-plz-filter', 'wcPlz', [
             'ajaxUrl'              => admin_url( 'admin-ajax.php' ),
@@ -321,16 +324,6 @@ final class WC_PLZ_Filter {
             'badgeTooltipPost'     => $settings['badge_tooltip_post'],
             'badgeTooltipSkipped'  => $settings['badge_tooltip_skipped'],
         ] );
-    }
-
-    /**
-     * Add defer attribute to our script to avoid render-blocking.
-     */
-    public function defer_script( string $tag, string $handle ): string {
-        if ( $handle === 'wc-plz-filter' ) {
-            return str_replace( ' src', ' defer src', $tag );
-        }
-        return $tag;
     }
 
     /* --- Frontend: Popup HTML --- */
@@ -417,11 +410,6 @@ final class WC_PLZ_Filter {
             'samesite' => 'Lax',
         ] );
 
-        if ( function_exists( 'WC' ) && WC()->customer ) {
-            WC()->customer->set_billing_postcode( '' );
-            WC()->customer->set_shipping_postcode( '' );
-            WC()->customer->save();
-        }
 
         wp_safe_redirect( add_query_arg( 'wc_plz_reset_done', '1', admin_url( 'admin.php?page=wc-plz-filter' ) ) );
         exit;
@@ -637,3 +625,13 @@ final class WC_PLZ_Filter {
 }
 
 WC_PLZ_Filter::instance();
+
+// Lifecycle hooks.
+register_activation_hook( __FILE__, function () {
+    require_once plugin_dir_path( __FILE__ ) . 'includes/class-wc-plz-stats.php';
+    WC_PLZ_Stats::activate();
+} );
+
+register_deactivation_hook( __FILE__, function () {
+    wp_clear_scheduled_hook( 'wc_plz_stats_cleanup' );
+} );

@@ -10,13 +10,21 @@ if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
 	exit;
 }
 
-// 1. Aktuelle und potenziell alte Optionen aus der wp_options Tabelle löschen
-delete_option( 'wc_plz_filter_v2' ); // Aktuelle Version
-delete_option( 'wc_plz_filter' );    // Vermuteter Name der alten Version
-delete_option( 'wc_plz_filter_settings' );
+global $wpdb;
 
-// 2. Transients (Zwischenspeicher) löschen
+// 1. Drop the statistics table.
+$wpdb->query( "DROP TABLE IF EXISTS `{$wpdb->prefix}wc_plz_events`" );
+
+// 2. Delete all options.
+delete_option( 'wc_plz_filter_v2' );
+delete_option( 'wc_plz_filter' );          // legacy
+delete_option( 'wc_plz_filter_settings' ); // legacy
+delete_option( 'wc_plz_db_version' );
+delete_option( 'wc_plz_stats_epoch' );
+delete_option( 'wc_plz_stats_cleanup' );
+
+// 3. Delete transients.
 delete_transient( 'wc_plz_local_codes' );
 
-// Falls du noch weitere alte Werte kennst (z.B. aus der Datenbank), 
-// können diese hier als delete_option('options_name'); ergänzt werden.
+// 4. Clear scheduled cron hook.
+wp_clear_scheduled_hook( 'wc_plz_stats_cleanup' );

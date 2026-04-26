@@ -28,17 +28,39 @@ final class WC_PLZ_Stats {
         return self::$instance ??= new self();
     }
 
+    public static function activate(): void {
+        global $wpdb;
+        $table   = $wpdb->prefix . self::TABLE;
+        $charset = $wpdb->get_charset_collate();
+
+        $sql = "CREATE TABLE {$table} (
+            id      BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            plz     VARCHAR(10)     NOT NULL DEFAULT '',
+            mode    VARCHAR(20)     NOT NULL DEFAULT '',
+            created DATETIME        NOT NULL,
+            PRIMARY KEY (id),
+            INDEX idx_created  (created),
+            INDEX idx_mode_plz (mode, plz)
+        ) {$charset};";
+
+        require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+        dbDelta( $sql );
+        update_option( 'wc_plz_db_version', self::DB_VERSION );
+
+        if ( ! wp_next_scheduled( self::CRON_HOOK ) ) {
+            wp_schedule_event( time(), 'daily', self::CRON_HOOK );
+        }
+    }
+
+    public static function deactivate(): void {
+        wp_clear_scheduled_hook( self::CRON_HOOK );
+    }
+
     private function __construct() {
         add_action( 'admin_init', [ $this, 'handle_stats_reset' ] );
         add_action( 'admin_init', [ $this, 'handle_cleanup_settings_save' ] );
         add_action( 'rest_api_init', [ $this, 'register_rest_routes' ] );
         add_action( self::CRON_HOOK, [ $this, 'run_cleanup' ] );
-
-        if ( ! wp_next_scheduled( self::CRON_HOOK ) ) {
-            wp_schedule_event( time(), 'daily', self::CRON_HOOK );
-        }
-
-        $this->maybe_create_table();
     }
 
     /* ── DB-Tabelle ──────────────────────────────── */
