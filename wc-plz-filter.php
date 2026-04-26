@@ -3,7 +3,7 @@
  * Plugin Name:  WC PLZ-Filter
  * Plugin URI:   https://fischer.digitale-theke.com
  * Description:  PLZ-Popup mit drei Modi (Abholung, Lokale Lieferung, Postversand). Filtert Produkte dynamisch nach WooCommerce-Versandklassen und füllt den Checkout vor.
- * Version:      2.5.0
+ * Version:      2.5.1
  * Author:       Metzgerei Fischer
  * License:      Proprietary
  * License URI:  https://fischer.digitale-theke.com
@@ -23,13 +23,14 @@ defined( 'ABSPATH' ) || exit;
 
 final class WC_PLZ_Filter {
 
-    const VERSION = '2.5.0';
+    const VERSION = '2.5.1';
     const COOKIE  = 'wc_delivery_mode';
     const OPT     = 'wc_plz_filter_v2';
     const CACHE   = 'wc_plz_local_codes';
 
     private static ?self $instance = null;
     private ?array $settings_cache = null;
+    private ?WC_PLZ_Stats $stats = null;
 
     public static function instance(): self {
         return self::$instance ??= new self();
@@ -47,6 +48,9 @@ final class WC_PLZ_Filter {
 
             return;
         }
+
+        require_once plugin_dir_path( __FILE__ ) . 'includes/class-wc-plz-stats.php';
+        $this->stats = WC_PLZ_Stats::instance();
 
         add_action( 'admin_menu', [ $this, 'admin_menu' ] );
         add_action( 'admin_init', [ $this, 'register_settings' ] );
@@ -281,6 +285,10 @@ final class WC_PLZ_Filter {
             WC()->customer->set_billing_postcode( $wc_plz );
             WC()->customer->set_shipping_postcode( $wc_plz );
             WC()->customer->save();
+        }
+
+        if ( $this->stats ) {
+            $this->stats->log_event( $wc_plz, $mode );
         }
 
         wp_send_json_success( [ 'mode' => $mode, 'plz' => $plz ] );
@@ -620,6 +628,9 @@ final class WC_PLZ_Filter {
                 <input type="hidden" name="wc_plz_reset" value="1" />
                 <?php submit_button( 'Cookie &amp; Session zurücksetzen', 'delete', 'submit', false ); ?>
             </form>
+            <?php if ( $this->stats ) : ?>
+                <?php $this->stats->render_admin_section(); ?>
+            <?php endif; ?>
         </div>
         <?php
     }
