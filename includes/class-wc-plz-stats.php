@@ -18,7 +18,6 @@ final class WC_PLZ_Stats {
 
     const DB_VERSION  = '1';
     const TABLE       = 'wc_plz_events';
-    const CACHE_KEY   = 'wc_plz_stats_cache';
     const CACHE_TTL   = 300; // 5 Minuten
     const OPT_CLEANUP = 'wc_plz_stats_cleanup';
     const CRON_HOOK   = 'wc_plz_stats_cleanup';
@@ -76,6 +75,10 @@ final class WC_PLZ_Stats {
     /* ── Event loggen ────────────────────────────── */
 
     public function log_event( string $plz, string $mode ): void {
+        if ( is_user_logged_in() && current_user_can( 'manage_woocommerce' ) ) {
+            return;
+        }
+
         global $wpdb;
         $wpdb->insert(
             $this->table_name(),

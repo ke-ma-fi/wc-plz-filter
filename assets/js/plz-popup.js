@@ -128,6 +128,12 @@
   }
 
   function closePopup() {
+    // If the popup closes without any delivery choice, treat it as skipped
+    if (!state.mode) {
+      saveState("skipped", "");
+      state = { mode: "skipped", plz: "" };
+      updateBadge("skipped", "");
+    }
     fadeOut($("#wc-plz-overlay"), 200);
   }
 
@@ -369,27 +375,17 @@
       });
     }
 
-    // Overlay click + Escape: save skipped only if no state set yet
-    function handleDismiss() {
-      if (!state.mode) {
-        saveState("skipped", "");
-        state = { mode: "skipped", plz: "" };
-        updateBadge("skipped", "");
-      }
-      closePopup();
-    }
-
     // Overlay click
     var overlay = $("#wc-plz-overlay");
     if (overlay) {
       overlay.addEventListener("click", function (e) {
-        if (e.target === overlay) handleDismiss();
+        if (e.target === overlay) closePopup();
       });
     }
 
     // Escape key
     document.addEventListener("keydown", function (e) {
-      if (e.key === "Escape") handleDismiss();
+      if (e.key === "Escape") closePopup();
     });
 
     // Badge click
