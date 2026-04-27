@@ -3,7 +3,7 @@
  * Plugin Name:  WC PLZ-Filter
  * Plugin URI:   https://fischer.digitale-theke.com
  * Description:  PLZ-Popup mit drei Modi (Abholung, Lokale Lieferung, Postversand). Filtert Produkte dynamisch nach WooCommerce-Versandklassen und füllt den Checkout vor.
- * Version:      2.6.1
+ * Version:      2.6.2
  * Author:       Metzgerei Fischer
  * License:      Proprietary
  * License URI:  https://fischer.digitale-theke.com
@@ -23,7 +23,7 @@ defined( 'ABSPATH' ) || exit;
 
 final class WC_PLZ_Filter {
 
-    const VERSION = '2.6.1';
+    const VERSION = '2.6.2';
     const COOKIE  = 'wc_delivery_mode';
     const OPT     = 'wc_plz_filter_v2';
     const CACHE   = 'wc_plz_local_codes';
@@ -199,7 +199,7 @@ final class WC_PLZ_Filter {
 
     public function filter_products( \WP_Query $q ): void {
         // --- DIAGNOSE START ---
-        if ( isset( $_GET['plz_debug'] ) ) {
+        if ( isset( $_GET['plz_debug'] ) && current_user_can( 'manage_woocommerce' ) ) {
             $state = $this->get_state();
             $log = sprintf(
                 "PLZ Debug: is_admin=%s | is_main_query=%s | cookie_mode=%s",
@@ -207,8 +207,15 @@ final class WC_PLZ_Filter {
                 $q->is_main_query() ? 'true' : 'false',
                 empty( $state['mode'] ) ? 'LEER' : $state['mode']
             );
-            error_log( $log ); // Schreibt ins PHP error.log
-            echo "\n<!-- " . esc_html( $log ) . " -->\n"; // Schreibt unsichtbar in den HTML-Quelltext
+            
+            // Ausgabe in den HTML-Quelltext
+            echo "\n<!-- " . esc_html( $log ) . " -->\n"; 
+            
+            // Zaubertrick: Wir geben die gesamte Query direkt in deiner Browser-Konsole aus!
+            $query_vars_json = wp_json_encode( $q->query_vars );
+            if ( $query_vars_json ) {
+                echo "<script>console.log('PLZ Debug Query gesichtet:', " . $query_vars_json . ");</script>\n";
+            }
         }
         // --- DIAGNOSE ENDE ---
 
