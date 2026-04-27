@@ -30,7 +30,7 @@ final class WC_PLZ_Updater {
     // ── Option helpers ────────────────────────────────────────────────────
 
     private function get_repo(): string {
-        return (string) get_option( self::OPT_REPO, '' );
+        return (string) get_option( self::OPT_REPO, 'ke-ma-fi/wc-plz-filter' );
     }
 
     private function get_secret(): string {
