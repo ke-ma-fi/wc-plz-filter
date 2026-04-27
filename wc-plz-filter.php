@@ -30,7 +30,8 @@ final class WC_PLZ_Filter {
 
     private static ?self $instance = null;
     private ?array $settings_cache = null;
-    private ?WC_PLZ_Stats $stats = null;
+    private ?WC_PLZ_Stats   $stats   = null;
+    private ?WC_PLZ_Updater $updater = null;
 
     public static function instance(): self {
         return self::$instance ??= new self();
@@ -51,6 +52,9 @@ final class WC_PLZ_Filter {
 
         require_once plugin_dir_path( __FILE__ ) . 'includes/class-wc-plz-stats.php';
         $this->stats = WC_PLZ_Stats::instance();
+
+        require_once plugin_dir_path( __FILE__ ) . 'includes/class-wc-plz-updater.php';
+        $this->updater = WC_PLZ_Updater::instance();
 
         add_action( 'admin_menu', [ $this, 'admin_menu' ] );
         add_action( 'admin_init', [ $this, 'register_settings' ] );
@@ -618,6 +622,9 @@ final class WC_PLZ_Filter {
             </form>
             <?php if ( $this->stats ) : ?>
                 <?php $this->stats->render_admin_section(); ?>
+            <?php endif; ?>
+            <?php if ( $this->updater ) : ?>
+                <?php $this->updater->render_admin_section(); ?>
             <?php endif; ?>
         </div>
         <?php
