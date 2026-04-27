@@ -1,0 +1,12 @@
+# macOS
+.DS_Store
+
+# Internal notes
+review.md
+
+# Build artifacts
+*.zip
+
+# Dev/test files
+badge-demo.html
+test-vanilla.html
