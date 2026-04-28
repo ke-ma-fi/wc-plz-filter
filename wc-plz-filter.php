@@ -73,6 +73,8 @@ final class WC_PLZ_Filter {
         add_action( 'pre_get_posts', [ $this, 'filter_products' ], 20 );
         // Elementor Pro: Produkt-Widgets laden per AJAX über eigenen Query-Filter
         add_filter( 'elementor/query/get_query_args', [ $this, 'filter_elementor_query' ], 10, 2 );
+        // WooCommerce-Shortcodes ([products], [featured_products] etc.) – oft von Elementor genutzt
+        add_filter( 'woocommerce_shortcode_products_query', [ $this, 'filter_shortcode_query' ] );
         add_filter( 'woocommerce_checkout_get_value',  [ $this, 'prefill_checkout' ], 10, 2 );
 
         foreach ( [ 'wp_ajax_', 'wp_ajax_nopriv_' ] as $p ) {
@@ -303,6 +305,37 @@ final class WC_PLZ_Filter {
             'operator' => 'NOT IN',
         ];
         $query_args['tax_query'] = $existing;
+
+        return $query_args;
+    }
+
+    /* --- WooCommerce Shortcode Query Filter (Elementor nutzt [products]-Shortcode) --- */
+
+    public function filter_shortcode_query( array $query_args ): array {
+        $state = $this->get_state();
+        if ( empty( $state['mode'] ) || $state['mode'] !== 'post' ) {
+            return $query_args;
+        }
+
+        $settings = $this->get_settings();
+        $excluded = array_filter( array_map( 'intval', (array) $settings['excluded_classes'] ) );
+        if ( empty( $excluded ) ) {
+            return $query_args;
+        }
+
+        $existing                = (array) ( $query_args['tax_query'] ?? [] );
+        $existing[]              = [
+            'taxonomy' => 'product_shipping_class',
+            'field'    => 'term_id',
+            'terms'    => $excluded,
+            'operator' => 'NOT IN',
+        ];
+        $query_args['tax_query'] = $existing;
+
+        $debug = isset( $_GET['plz_debug'] ) && current_user_can( 'manage_woocommerce' );
+        if ( $debug ) {
+            echo "<script>console.log('PLZ Debug: Shortcode-Query gefiltert (woocommerce_shortcode_products_query)');</script>\n";
+        }
 
         return $query_args;
     }
