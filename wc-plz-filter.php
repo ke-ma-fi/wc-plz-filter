@@ -232,10 +232,33 @@ final class WC_PLZ_Filter {
         $q->set( 'tax_query', $tax );
 
         if ( $debug ) {
-            $query_vars_json = wp_json_encode( $q->query_vars );
-            if ( $query_vars_json ) {
-                echo "<script>console.log('PLZ Debug ERFOLG! Filter wurde angewendet. Modifizierte Query:', " . $query_vars_json . ");</script>\n";
+            // 1) Zeige die IDs, die wir aus den Plugin-Einstellungen geladen haben
+            $debug_info = [
+                'excluded_ids_from_settings' => $excluded,
+            ];
+
+            // 2) Zeige ALLE Versandklassen, die auf diesem Server existieren (Name + echte ID)
+            $all_classes = WC()->shipping()->get_shipping_classes();
+            $class_map = [];
+            foreach ( $all_classes as $cls ) {
+                $class_map[] = [
+                    'name'    => $cls->name,
+                    'term_id' => $cls->term_id,
+                    'slug'    => $cls->slug,
+                    'count'   => $cls->count,
+                ];
             }
+            $debug_info['all_shipping_classes_on_server'] = $class_map;
+
+            // 3) Fange die finale SQL-Query ab, die WordPress an die Datenbank schickt
+            add_filter( 'posts_request', function( string $sql, \WP_Query $query ) use ( $q ) {
+                if ( $query === $q ) {
+                    echo "<script>console.log('PLZ Debug FINALE SQL:', " . wp_json_encode( $sql ) . ");</script>\n";
+                }
+                return $sql;
+            }, 10, 2 );
+
+            echo "<script>console.log('PLZ Debug ERFOLG! Filter angewendet.', " . wp_json_encode( $debug_info ) . ");</script>\n";
         }
     }
 
