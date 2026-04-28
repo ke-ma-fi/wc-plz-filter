@@ -1,9 +1,10 @@
 <?php
 /**
+ * test webhooks
  * Plugin Name:  WC PLZ-Filter
  * Plugin URI:   https://fischer.digitale-theke.com
  * Description:  PLZ-Popup mit drei Modi (Abholung, Lokale Lieferung, Postversand). Filtert Produkte dynamisch nach WooCommerce-Versandklassen und füllt den Checkout vor.
- * Version:      2.6.5
+ * Version:      2.6.3
  * Author:       Metzgerei Fischer
  * License:      Proprietary
  * License URI:  https://fischer.digitale-theke.com
@@ -23,7 +24,7 @@ defined( 'ABSPATH' ) || exit;
 
 final class WC_PLZ_Filter {
 
-    const VERSION = '2.6.5';
+    const VERSION = '2.6.3';
     const COOKIE  = 'wc_delivery_mode';
     const OPT     = 'wc_plz_filter_v2';
     const CACHE   = 'wc_plz_local_codes';
@@ -67,14 +68,7 @@ final class WC_PLZ_Filter {
         add_action( 'wp_footer',          [ $this, 'render_popup' ] );
 
 
-        // WooCommerce-Hauptquery (post_type ist dort leer, aber wc_query ist gesetzt)
-        add_action( 'woocommerce_product_query', [ $this, 'filter_products' ] );
-        // Alle anderen Produkt-Queries mit post_type='product' (z.B. eigene WP_Query)
-        add_action( 'pre_get_posts', [ $this, 'filter_products' ], 20 );
-        // Elementor Pro: Produkt-Widgets laden per AJAX über eigenen Query-Filter
-        add_filter( 'elementor/query/get_query_args', [ $this, 'filter_elementor_query' ], 10, 2 );
-        // WooCommerce-Shortcodes ([products], [featured_products] etc.) – oft von Elementor genutzt
-        add_filter( 'woocommerce_shortcode_products_query', [ $this, 'filter_shortcode_query' ] );
+        add_action( 'woocommerce_product_query',      [ $this, 'filter_products' ] );
         add_filter( 'woocommerce_checkout_get_value',  [ $this, 'prefill_checkout' ], 10, 2 );
 
         foreach ( [ 'wp_ajax_', 'wp_ajax_nopriv_' ] as $p ) {
@@ -205,55 +199,17 @@ final class WC_PLZ_Filter {
     /* --- Produktfilterung --- */
 
     public function filter_products( \WP_Query $q ): void {
-        if ( is_admin() ) {
-            return;
-        }
-
-        $debug = isset( $_GET['plz_debug'] ) && current_user_can( 'manage_woocommerce' );
-
-        // Debug: alle Queries loggen, um zu sehen was Elementor schickt
-        if ( $debug ) {
-            static $plz_debug_registered = false;
-            static $plz_all_queries      = [];
-
-            $plz_all_queries[] = [
-                'post_type' => $q->get( 'post_type' ),
-                'wc_query'  => $q->get( 'wc_query' ),
-                'is_main'   => $q->is_main_query(),
-                'pagename'  => $q->get( 'pagename' ),
-            ];
-
-            if ( ! $plz_debug_registered ) {
-                $plz_debug_registered = true;
-                add_action( 'wp_footer', function() use ( &$plz_all_queries ) {
-                    echo '<script>console.log("PLZ Debug: ALLE pre_get_posts Queries auf dieser Seite:", ' . wp_json_encode( $plz_all_queries ) . ');</script>' . "\n";
-                }, 999 );
-            }
-        }
-
-        $post_type  = $q->get( 'post_type' );
-        $is_product = ( $post_type === 'product'
-            || ( is_array( $post_type ) && in_array( 'product', $post_type, true ) )
-            || $q->get( 'wc_query' ) === 'product_query' );
-
-        if ( ! $is_product ) {
-            return;
-        }
-
-        if ( $q->get( '_plz_filter_applied' ) ) {
+        // Erlaube Hauptabfragen UND alle Abfragen, die sich explizit als WooCommerce "product_query" melden
+        $is_valid_query = ( $q->is_main_query() || $q->get( 'wc_query' ) === 'product_query' );
+        
+        if ( is_admin() || ! $is_valid_query ) {
             return;
         }
 
         $state = $this->get_state();
-
-        if ( $debug ) {
-            echo "<script>console.log('PLZ Debug: Produkt-Query gefunden. Cookie-State:', " . wp_json_encode( $state ) . ");</script>\n";
-        }
+        $debug = isset( $_GET['plz_debug'] ) && current_user_can( 'manage_woocommerce' );
 
         if ( empty( $state['mode'] ) || $state['mode'] !== 'post' ) {
-            if ( $debug ) {
-                echo "<script>console.warn('PLZ Debug: Kein Filter nötig – Modus ist: " . esc_js( $state['mode'] ?: '(leer)' ) . "');</script>\n";
-            }
             return;
         }
 
@@ -262,82 +218,33 @@ final class WC_PLZ_Filter {
 
         if ( empty( $excluded ) ) {
             if ( $debug ) {
-                echo "<script>console.error('PLZ Debug FEHLER: Keine ausgeschlossenen Versandklassen in den Einstellungen gefunden.');</script>\n";
+                echo "<script>console.error('PLZ Debug FEHLER: Abbruch! Es wurden keine ausgeschlossenen Versandklassen in den Plugin-Einstellungen auf dem Live-Server gefunden. (IDs sind evtl. anders als im Testshop!)');</script>\n";
             }
             return;
         }
 
         $tax = (array) $q->get( 'tax_query' );
         $tax[] = [
-            'taxonomy' => 'product_shipping_class',
-            'field'    => 'term_id',
-            'terms'    => $excluded,
-            'operator' => 'NOT IN',
+            'relation' => 'OR',
+            [
+                'taxonomy' => 'product_shipping_class',
+                'operator' => 'NOT EXISTS',
+            ],
+            [
+                'taxonomy' => 'product_shipping_class',
+                'field'    => 'term_id',
+                'terms'    => $excluded,
+                'operator' => 'NOT IN',
+            ],
         ];
         $q->set( 'tax_query', $tax );
-        $q->set( '_plz_filter_applied', true );
 
         if ( $debug ) {
-            $source = $q->is_main_query() ? 'Main Query' : 'Elementor / Custom Query';
-            echo "<script>console.log('PLZ Debug ERFOLG! Filter angewendet auf: " . esc_js( $source ) . "', " . wp_json_encode( [ 'excluded_ids' => $excluded ] ) . ");</script>\n";
+            $query_vars_json = wp_json_encode( $q->query_vars );
+            if ( $query_vars_json ) {
+                echo "<script>console.log('PLZ Debug ERFOLG! Filter wurde angewendet. Modifizierte Query:', " . $query_vars_json . ");</script>\n";
+            }
         }
-    }
-
-    /* --- Elementor Pro Query Filter (AJAX-Produktgrid) --- */
-
-    public function filter_elementor_query( array $query_args, $widget ): array {
-        $state = $this->get_state();
-        if ( empty( $state['mode'] ) || $state['mode'] !== 'post' ) {
-            return $query_args;
-        }
-
-        $settings = $this->get_settings();
-        $excluded = array_filter( array_map( 'intval', (array) $settings['excluded_classes'] ) );
-        if ( empty( $excluded ) ) {
-            return $query_args;
-        }
-
-        $existing           = (array) ( $query_args['tax_query'] ?? [] );
-        $existing[]         = [
-            'taxonomy' => 'product_shipping_class',
-            'field'    => 'term_id',
-            'terms'    => $excluded,
-            'operator' => 'NOT IN',
-        ];
-        $query_args['tax_query'] = $existing;
-
-        return $query_args;
-    }
-
-    /* --- WooCommerce Shortcode Query Filter (Elementor nutzt [products]-Shortcode) --- */
-
-    public function filter_shortcode_query( array $query_args ): array {
-        $state = $this->get_state();
-        if ( empty( $state['mode'] ) || $state['mode'] !== 'post' ) {
-            return $query_args;
-        }
-
-        $settings = $this->get_settings();
-        $excluded = array_filter( array_map( 'intval', (array) $settings['excluded_classes'] ) );
-        if ( empty( $excluded ) ) {
-            return $query_args;
-        }
-
-        $existing                = (array) ( $query_args['tax_query'] ?? [] );
-        $existing[]              = [
-            'taxonomy' => 'product_shipping_class',
-            'field'    => 'term_id',
-            'terms'    => $excluded,
-            'operator' => 'NOT IN',
-        ];
-        $query_args['tax_query'] = $existing;
-
-        $debug = isset( $_GET['plz_debug'] ) && current_user_can( 'manage_woocommerce' );
-        if ( $debug ) {
-            echo "<script>console.log('PLZ Debug: Shortcode-Query gefiltert (woocommerce_shortcode_products_query)');</script>\n";
-        }
-
-        return $query_args;
     }
 
     /* --- Checkout Prefill --- */
