@@ -198,23 +198,53 @@ final class WC_PLZ_Filter {
     /* --- Produktfilterung --- */
 
     public function filter_products( \WP_Query $q ): void {
-        // Nur Frontend-Abfragen für Produkte (fängt WooCommerce UND Elementor ab)
-        $post_type = $q->get( 'post_type' );
-        $is_product = ( $post_type === 'product' || ( is_array( $post_type ) && in_array( 'product', $post_type, true ) ) );
-
-        if ( is_admin() || ! $is_product ) {
+        if ( is_admin() ) {
             return;
         }
 
-        // Schutz gegen doppelte Anwendung (gleiche Query wird ggf. mehrfach durchlaufen)
+        $debug = isset( $_GET['plz_debug'] ) && current_user_can( 'manage_woocommerce' );
+
+        // Debug: alle Queries loggen, um zu sehen was Elementor schickt
+        if ( $debug ) {
+            static $plz_debug_registered = false;
+            static $plz_all_queries      = [];
+
+            $plz_all_queries[] = [
+                'post_type' => $q->get( 'post_type' ),
+                'wc_query'  => $q->get( 'wc_query' ),
+                'is_main'   => $q->is_main_query(),
+                'pagename'  => $q->get( 'pagename' ),
+            ];
+
+            if ( ! $plz_debug_registered ) {
+                $plz_debug_registered = true;
+                add_action( 'wp_footer', function() use ( &$plz_all_queries ) {
+                    echo '<script>console.log("PLZ Debug: ALLE pre_get_posts Queries auf dieser Seite:", ' . wp_json_encode( $plz_all_queries ) . ');</script>' . "\n";
+                }, 999 );
+            }
+        }
+
+        $post_type  = $q->get( 'post_type' );
+        $is_product = ( $post_type === 'product' || ( is_array( $post_type ) && in_array( 'product', $post_type, true ) ) );
+
+        if ( ! $is_product ) {
+            return;
+        }
+
         if ( $q->get( '_plz_filter_applied' ) ) {
             return;
         }
 
         $state = $this->get_state();
-        $debug = isset( $_GET['plz_debug'] ) && current_user_can( 'manage_woocommerce' );
+
+        if ( $debug ) {
+            echo "<script>console.log('PLZ Debug: Produkt-Query gefunden. Cookie-State:', " . wp_json_encode( $state ) . ");</script>\n";
+        }
 
         if ( empty( $state['mode'] ) || $state['mode'] !== 'post' ) {
+            if ( $debug ) {
+                echo "<script>console.warn('PLZ Debug: Kein Filter nötig – Modus ist: " . esc_js( $state['mode'] ?: '(leer)' ) . "');</script>\n";
+            }
             return;
         }
 
@@ -239,8 +269,8 @@ final class WC_PLZ_Filter {
         $q->set( '_plz_filter_applied', true );
 
         if ( $debug ) {
-            $source = $q->is_main_query() ? 'WooCommerce Main Query' : 'Elementor / Custom Query';
-            echo "<script>console.log('PLZ Debug ERFOLG! Filter angewendet auf: " . esc_js( $source ) . "');</script>\n";
+            $source = $q->is_main_query() ? 'Main Query' : 'Elementor / Custom Query';
+            echo "<script>console.log('PLZ Debug ERFOLG! Filter angewendet auf: " . esc_js( $source ) . "', " . wp_json_encode( [ 'excluded_ids' => $excluded ] ) . ");</script>\n";
         }
     }
 
