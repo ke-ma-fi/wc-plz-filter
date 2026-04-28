@@ -3,7 +3,7 @@
  * Plugin Name:  WC PLZ-Filter
  * Plugin URI:   https://fischer.digitale-theke.com
  * Description:  PLZ-Popup mit drei Modi (Abholung, Lokale Lieferung, Postversand). Filtert Produkte dynamisch nach WooCommerce-Versandklassen und füllt den Checkout vor.
- * Version:      2.6.4
+ * Version:      2.6.5
  * Author:       Metzgerei Fischer
  * License:      Proprietary
  * License URI:  https://fischer.digitale-theke.com
@@ -23,7 +23,7 @@ defined( 'ABSPATH' ) || exit;
 
 final class WC_PLZ_Filter {
 
-    const VERSION = '2.6.4';
+    const VERSION = '2.6.5';
     const COOKIE  = 'wc_delivery_mode';
     const OPT     = 'wc_plz_filter_v2';
     const CACHE   = 'wc_plz_local_codes';
@@ -67,7 +67,7 @@ final class WC_PLZ_Filter {
         add_action( 'wp_footer',          [ $this, 'render_popup' ] );
 
 
-        add_action( 'woocommerce_product_query',      [ $this, 'filter_products' ] );
+        add_action( 'pre_get_posts', [ $this, 'filter_products' ] );
         add_filter( 'woocommerce_checkout_get_value',  [ $this, 'prefill_checkout' ], 10, 2 );
 
         foreach ( [ 'wp_ajax_', 'wp_ajax_nopriv_' ] as $p ) {
@@ -198,10 +198,16 @@ final class WC_PLZ_Filter {
     /* --- Produktfilterung --- */
 
     public function filter_products( \WP_Query $q ): void {
-        // Erlaube Hauptabfragen UND alle Abfragen, die sich explizit als WooCommerce "product_query" melden
-        $is_valid_query = ( $q->is_main_query() || $q->get( 'wc_query' ) === 'product_query' );
-        
-        if ( is_admin() || ! $is_valid_query ) {
+        // Nur Frontend-Abfragen für Produkte (fängt WooCommerce UND Elementor ab)
+        $post_type = $q->get( 'post_type' );
+        $is_product = ( $post_type === 'product' || ( is_array( $post_type ) && in_array( 'product', $post_type, true ) ) );
+
+        if ( is_admin() || ! $is_product ) {
+            return;
+        }
+
+        // Schutz gegen doppelte Anwendung (gleiche Query wird ggf. mehrfach durchlaufen)
+        if ( $q->get( '_plz_filter_applied' ) ) {
             return;
         }
 
@@ -217,7 +223,7 @@ final class WC_PLZ_Filter {
 
         if ( empty( $excluded ) ) {
             if ( $debug ) {
-                echo "<script>console.error('PLZ Debug FEHLER: Abbruch! Es wurden keine ausgeschlossenen Versandklassen in den Plugin-Einstellungen auf dem Live-Server gefunden. (IDs sind evtl. anders als im Testshop!)');</script>\n";
+                echo "<script>console.error('PLZ Debug FEHLER: Keine ausgeschlossenen Versandklassen in den Einstellungen gefunden.');</script>\n";
             }
             return;
         }
@@ -230,35 +236,11 @@ final class WC_PLZ_Filter {
             'operator' => 'NOT IN',
         ];
         $q->set( 'tax_query', $tax );
+        $q->set( '_plz_filter_applied', true );
 
         if ( $debug ) {
-            // 1) Zeige die IDs, die wir aus den Plugin-Einstellungen geladen haben
-            $debug_info = [
-                'excluded_ids_from_settings' => $excluded,
-            ];
-
-            // 2) Zeige ALLE Versandklassen, die auf diesem Server existieren (Name + echte ID)
-            $all_classes = WC()->shipping()->get_shipping_classes();
-            $class_map = [];
-            foreach ( $all_classes as $cls ) {
-                $class_map[] = [
-                    'name'    => $cls->name,
-                    'term_id' => $cls->term_id,
-                    'slug'    => $cls->slug,
-                    'count'   => $cls->count,
-                ];
-            }
-            $debug_info['all_shipping_classes_on_server'] = $class_map;
-
-            // 3) Fange die finale SQL-Query ab, die WordPress an die Datenbank schickt
-            add_filter( 'posts_request', function( string $sql, \WP_Query $query ) use ( $q ) {
-                if ( $query === $q ) {
-                    echo "<script>console.log('PLZ Debug FINALE SQL:', " . wp_json_encode( $sql ) . ");</script>\n";
-                }
-                return $sql;
-            }, 10, 2 );
-
-            echo "<script>console.log('PLZ Debug ERFOLG! Filter angewendet.', " . wp_json_encode( $debug_info ) . ");</script>\n";
+            $source = $q->is_main_query() ? 'WooCommerce Main Query' : 'Elementor / Custom Query';
+            echo "<script>console.log('PLZ Debug ERFOLG! Filter angewendet auf: " . esc_js( $source ) . "');</script>\n";
         }
     }
 
