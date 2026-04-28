@@ -67,7 +67,12 @@ final class WC_PLZ_Filter {
         add_action( 'wp_footer',          [ $this, 'render_popup' ] );
 
 
-        add_action( 'pre_get_posts', [ $this, 'filter_products' ] );
+        // WooCommerce-Hauptquery (post_type ist dort leer, aber wc_query ist gesetzt)
+        add_action( 'woocommerce_product_query', [ $this, 'filter_products' ] );
+        // Alle anderen Produkt-Queries mit post_type='product' (z.B. eigene WP_Query)
+        add_action( 'pre_get_posts', [ $this, 'filter_products' ], 20 );
+        // Elementor Pro: Produkt-Widgets laden per AJAX über eigenen Query-Filter
+        add_filter( 'elementor/query/get_query_args', [ $this, 'filter_elementor_query' ], 10, 2 );
         add_filter( 'woocommerce_checkout_get_value',  [ $this, 'prefill_checkout' ], 10, 2 );
 
         foreach ( [ 'wp_ajax_', 'wp_ajax_nopriv_' ] as $p ) {
@@ -225,7 +230,9 @@ final class WC_PLZ_Filter {
         }
 
         $post_type  = $q->get( 'post_type' );
-        $is_product = ( $post_type === 'product' || ( is_array( $post_type ) && in_array( 'product', $post_type, true ) ) );
+        $is_product = ( $post_type === 'product'
+            || ( is_array( $post_type ) && in_array( 'product', $post_type, true ) )
+            || $q->get( 'wc_query' ) === 'product_query' );
 
         if ( ! $is_product ) {
             return;
@@ -272,6 +279,32 @@ final class WC_PLZ_Filter {
             $source = $q->is_main_query() ? 'Main Query' : 'Elementor / Custom Query';
             echo "<script>console.log('PLZ Debug ERFOLG! Filter angewendet auf: " . esc_js( $source ) . "', " . wp_json_encode( [ 'excluded_ids' => $excluded ] ) . ");</script>\n";
         }
+    }
+
+    /* --- Elementor Pro Query Filter (AJAX-Produktgrid) --- */
+
+    public function filter_elementor_query( array $query_args, $widget ): array {
+        $state = $this->get_state();
+        if ( empty( $state['mode'] ) || $state['mode'] !== 'post' ) {
+            return $query_args;
+        }
+
+        $settings = $this->get_settings();
+        $excluded = array_filter( array_map( 'intval', (array) $settings['excluded_classes'] ) );
+        if ( empty( $excluded ) ) {
+            return $query_args;
+        }
+
+        $existing           = (array) ( $query_args['tax_query'] ?? [] );
+        $existing[]         = [
+            'taxonomy' => 'product_shipping_class',
+            'field'    => 'term_id',
+            'terms'    => $excluded,
+            'operator' => 'NOT IN',
+        ];
+        $query_args['tax_query'] = $existing;
+
+        return $query_args;
     }
 
     /* --- Checkout Prefill --- */
