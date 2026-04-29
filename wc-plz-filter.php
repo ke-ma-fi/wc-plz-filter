@@ -68,8 +68,7 @@ final class WC_PLZ_Filter {
         add_action( 'wp_footer',          [ $this, 'render_popup' ] );
 
 
-        add_action( 'woocommerce_product_query', [ $this, 'filter_products' ] );
-        add_filter( 'the_posts',               [ $this, 'filter_posts_global' ], 10, 2 );
+        add_action( 'woocommerce_product_query',      [ $this, 'filter_products' ] );
         add_filter( 'woocommerce_checkout_get_value', [ $this, 'prefill_checkout' ], 10, 2 );
 
         foreach ( [ 'wp_ajax_', 'wp_ajax_nopriv_' ] as $p ) {
@@ -300,77 +299,6 @@ final class WC_PLZ_Filter {
         }
     }
 
-    /* --- Globaler PHP-Fallback-Filter (fängt alle Queries auf WC-Seiten) --- */
-
-    public function filter_posts_global( array $posts, \WP_Query $query ): array {
-        if ( is_admin() || empty( $posts ) ) {
-            return $posts;
-        }
-
-        $debug = isset( $_GET['plz_debug'] ) && current_user_can( 'manage_woocommerce' );
-
-        if ( $debug ) {
-            // Alle Queries loggen – egal ob Produkte oder nicht
-            echo '<script>console.log("PLZ global hook:", ' . wp_json_encode( [
-                'post_type' => $query->get( 'post_type' ),
-                'wc_query'  => $query->get( 'wc_query' ),
-                'is_main'   => $query->is_main_query(),
-                'count'     => count( $posts ),
-                'first_ids' => array_slice( array_column( $posts, 'ID' ), 0, 5 ),
-                'first_types' => array_unique( array_slice( array_column( $posts, 'post_type' ), 0, 5 ) ),
-            ] ) . ');</script>' . "\n";
-        }
-
-        $state = $this->get_state();
-        if ( empty( $state['mode'] ) || $state['mode'] !== 'post' ) {
-            return $posts;
-        }
-
-        // Nur wenn die Query Produkte enthält
-        $has_product = false;
-        foreach ( $posts as $post ) {
-            if ( isset( $post->post_type ) && $post->post_type === 'product' ) {
-                $has_product = true;
-                break;
-            }
-        }
-        if ( ! $has_product ) {
-            return $posts;
-        }
-
-        $settings   = $this->get_settings();
-        $excluded_ids = array_filter( array_map( 'intval', (array) $settings['excluded_classes'] ) );
-        if ( empty( $excluded_ids ) ) {
-            return $posts;
-        }
-
-        $excluded_slugs = get_terms( [
-            'taxonomy'   => 'product_shipping_class',
-            'include'    => $excluded_ids,
-            'fields'     => 'slugs',
-            'hide_empty' => false,
-        ] );
-        if ( empty( $excluded_slugs ) || is_wp_error( $excluded_slugs ) ) {
-            return $posts;
-        }
-
-        return array_values( array_filter( $posts, function ( \WP_Post $post ) use ( $excluded_slugs ) {
-            if ( $post->post_type !== 'product' ) {
-                return true;
-            }
-            $terms = get_the_terms( $post->ID, 'product_shipping_class' );
-            if ( empty( $terms ) || is_wp_error( $terms ) ) {
-                return true;
-            }
-            foreach ( $terms as $term ) {
-                if ( in_array( $term->slug, $excluded_slugs, true ) ) {
-                    return false;
-                }
-            }
-            return true;
-        } ) );
-    }
-
     /* --- Checkout Prefill --- */
 
     public function prefill_checkout( $value, string $input ) {
@@ -467,6 +395,53 @@ final class WC_PLZ_Filter {
             'badgeTooltipPost'     => $settings['badge_tooltip_post'],
             'badgeTooltipSkipped'  => $settings['badge_tooltip_skipped'],
         ] );
+
+        // JS-Layer: versteckt Produkte im fgf-Grid (pdb{ID}-Klassen) die kein Standard-WC-Hook erreicht
+        if ( $state['mode'] === 'post' ) {
+            $excluded_ids = array_filter( array_map( 'intval', (array) $settings['excluded_classes'] ) );
+
+            if ( ! empty( $excluded_ids ) ) {
+                $excluded_slugs = get_terms( [
+                    'taxonomy'   => 'product_shipping_class',
+                    'include'    => $excluded_ids,
+                    'fields'     => 'slugs',
+                    'hide_empty' => false,
+                ] );
+
+                if ( ! empty( $excluded_slugs ) && ! is_wp_error( $excluded_slugs ) ) {
+                    global $wpdb;
+                    $placeholders = implode( ', ', array_fill( 0, count( $excluded_slugs ), '%s' ) );
+                    // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+                    $hidden_ids = $wpdb->get_col(
+                        $wpdb->prepare(
+                            "SELECT DISTINCT tr.object_id
+                             FROM {$wpdb->term_relationships} tr
+                             INNER JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id
+                             INNER JOIN {$wpdb->terms} t ON t.term_id = tt.term_id
+                             WHERE tt.taxonomy = 'product_shipping_class'
+                             AND t.slug IN ($placeholders)",
+                            ...$excluded_slugs
+                        )
+                    );
+
+                    if ( ! empty( $hidden_ids ) ) {
+                        $ids_json = wp_json_encode( array_map( 'intval', $hidden_ids ) );
+                        wp_add_inline_script(
+                            'wc-plz-filter',
+                            "(function(){var ids={$ids_json};" .
+                            'function plzHide(){ids.forEach(function(id){' .
+                            'document.querySelectorAll(".pdb"+id).forEach(function(el){el.style.display="none";});' .
+                            '});}' .
+                            'document.readyState==="loading"' .
+                            '?document.addEventListener("DOMContentLoaded",plzHide)' .
+                            ':plzHide();' .
+                            '})();',
+                            'after'
+                        );
+                    }
+                }
+            }
+        }
     }
 
     /* --- Frontend: Popup HTML --- */
