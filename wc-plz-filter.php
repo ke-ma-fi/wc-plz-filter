@@ -3,7 +3,7 @@
  * Plugin Name:  WC PLZ-Filter
  * Plugin URI:   https://fischer.digitale-theke.com
  * Description:  PLZ-Popup mit drei Modi (Abholung, Lokale Lieferung, Postversand). Filtert Produkte dynamisch nach WooCommerce-Versandklassen und füllt den Checkout vor.
- * Version:      2.7.3
+ * Version:      2.7.4
  * Author:       Metzgerei Fischer
  * License:      Proprietary
  * License URI:  https://fischer.digitale-theke.com
@@ -23,7 +23,7 @@ defined( 'ABSPATH' ) || exit;
 
 final class WC_PLZ_Filter {
 
-    const VERSION         = '2.7.3';
+    const VERSION         = '2.7.4';
     const COOKIE          = 'wc_delivery_mode';
     const OPT             = 'wc_plz_filter_v2';
     const CACHE           = 'wc_plz_local_codes';
@@ -595,7 +595,7 @@ final class WC_PLZ_Filter {
             return;
         }
         ?>
-        <script id="wc-plz-head-hide">
+        <script id="wc-plz-head-hide" data-no-optimize="1" data-no-minify="1" data-no-defer="1" data-cfasync="false">
         (function(){
             try {
                 var m = document.cookie.match(/(?:^|; )<?php echo esc_js( self::COOKIE ); ?>=([^;]*)/);
@@ -604,7 +604,10 @@ final class WC_PLZ_Filter {
                 if (raw.indexOf('post:') !== 0) return;
                 var ids = JSON.parse(localStorage.getItem('wc_plz_hidden_ids') || '[]');
                 if (!ids.length) return;
-                var sel = ids.map(function(id){ return '.pdb' + id; }).join(',');
+                // .pdb{ID} = fgf-Custom-Grid; .products .post-{ID} = WC-Standard-Loops
+                // (Cross-Sells / Up-Sells / Related / Shop). Niemals body.post-{ID} oder
+                // article.post-{ID} matchen, sonst verschwindet die Single-Product-Page.
+                var sel = ids.map(function(id){ return '.pdb' + id + ', .products .post-' + id; }).join(',');
                 if (!sel) return;
                 var s = document.createElement('style');
                 s.id = 'wc-plz-hide-style';

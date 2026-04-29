@@ -326,7 +326,10 @@
       
       if (!ids.length) return;
       
-      var sel = ids.map(function(id){ return ".pdb" + id; }).join(",");
+      // .pdb{ID} = fgf-Custom-Grid; .products .post-{ID} = WC-Standard-Loops
+      // (Cross-Sells / Up-Sells / Related / Shop). Niemals body.post-{ID} oder
+      // article.post-{ID} matchen, sonst verschwindet die Single-Product-Page.
+      var sel = ids.map(function(id){ return ".pdb" + id + ", .products .post-" + id; }).join(",");
       if (!sel) return;
       
       if (!styleEl) {
