@@ -12,6 +12,8 @@
 
   var COOKIE = D.cookieName;
   var DAYS = parseInt(D.cookieDays, 10) || 30;
+  var nonce = D.nonce; // Initial-Wert aus dem (potentiell gecachten) HTML
+  var nonceFetchInFlight = null;
 
   /* ── Helpers ────────────────────────────────── */
 
@@ -41,21 +43,71 @@
       "; SameSite=Lax";
   }
 
+  /* ── Nonce-Refresh (Page-Cache-tolerant) ─── */
+
+  function refreshNonce(cb) {
+    if (nonceFetchInFlight) {
+      nonceFetchInFlight.push(cb);
+      return;
+    }
+    nonceFetchInFlight = [cb];
+    var xhr = new XMLHttpRequest();
+    xhr.open("GET", D.nonceUrl, true);
+    xhr.onreadystatechange = function () {
+      if (xhr.readyState !== 4) return;
+      var fresh = null;
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          var res = JSON.parse(xhr.responseText);
+          if (res && res.nonce) fresh = res.nonce;
+        } catch (e) {}
+      }
+      if (fresh) nonce = fresh;
+      var queue = nonceFetchInFlight;
+      nonceFetchInFlight = null;
+      for (var i = 0; i < queue.length; i++) {
+        if (queue[i]) queue[i](fresh);
+      }
+    };
+    xhr.send();
+  }
+
   /* ── AJAX helper (replaces $.post) ─────────── */
 
-  function post(url, data, onSuccess, onError) {
+  // res === -1 (oder 0) ist die Standard-WP-Antwort bei abgelaufenem/falschem Nonce
+  // (admin-ajax.php, check_ajax_referer ohne 3rd arg = die mit -1).
+  function isNonceFailure(xhr) {
+    if (xhr.status === 403) return true;
+    var body = (xhr.responseText || "").trim();
+    return body === "-1" || body === "0";
+  }
+
+  function post(url, data, onSuccess, onError, _retried) {
     var body = new URLSearchParams();
     for (var key in data) {
-      if (data.hasOwnProperty(key)) {
+      if (data.hasOwnProperty(key) && key !== "nonce") {
         body.append(key, data[key]);
       }
     }
+    body.append("nonce", nonce); // immer den aktuellen Token nehmen
 
     var xhr = new XMLHttpRequest();
     xhr.open("POST", url, true);
-    xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+    xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8");
+    xhr.timeout = 10000;
+    xhr.ontimeout = function () { if (onError) onError(); };
     xhr.onreadystatechange = function () {
       if (xhr.readyState !== 4) return;
+
+      // Nonce abgelaufen (Page-Cache älter als nonce_life) → einmal frischen holen + retry
+      if (!_retried && isNonceFailure(xhr)) {
+        refreshNonce(function (fresh) {
+          if (!fresh) { if (onError) onError(); return; }
+          post(url, data, onSuccess, onError, true);
+        });
+        return;
+      }
+
       if (xhr.status >= 200 && xhr.status < 300) {
         try {
           var res = JSON.parse(xhr.responseText);
@@ -154,7 +206,6 @@
       D.ajaxUrl,
       {
         action: "wc_plz_save",
-        nonce: D.nonce,
         mode: mode,
         plz: plz,
       },
@@ -275,7 +326,7 @@
       
       if (!ids.length) return;
       
-      var sel = ids.map(function(id){ return ".pdb" + id + ", .post-" + id; }).join(",");
+      var sel = ids.map(function(id){ return ".pdb" + id; }).join(",");
       if (!sel) return;
       
       if (!styleEl) {
@@ -330,7 +381,6 @@
       D.ajaxUrl,
       {
         action: "wc_plz_check",
-        nonce: D.nonce,
         plz: plz,
       },
       function (res) {
@@ -462,8 +512,7 @@
             D.ajaxUrl,
             {
               action: "wc_plz_save",
-              nonce: D.nonce,
-              mode: state.mode,
+                    mode: state.mode,
               plz: newPlz,
             },
             function (res) {

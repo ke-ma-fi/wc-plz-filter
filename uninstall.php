@@ -22,6 +22,7 @@ delete_option( 'wc_plz_filter_settings' ); // legacy
 delete_option( 'wc_plz_db_version' );
 delete_option( 'wc_plz_stats_epoch' );
 delete_option( 'wc_plz_stats_cleanup' );
+delete_option( 'wc_plz_hidden_version' );
 delete_option( 'wc_plz_updater_repo' );
 delete_option( 'wc_plz_updater_secret' );
 delete_option( 'wc_plz_updater_log' );

@@ -3,7 +3,7 @@
  * Plugin Name:  WC PLZ-Filter
  * Plugin URI:   https://fischer.digitale-theke.com
  * Description:  PLZ-Popup mit drei Modi (Abholung, Lokale Lieferung, Postversand). Filtert Produkte dynamisch nach WooCommerce-Versandklassen und füllt den Checkout vor.
- * Version:      2.7.2
+ * Version:      2.7.3
  * Author:       Metzgerei Fischer
  * License:      Proprietary
  * License URI:  https://fischer.digitale-theke.com
@@ -23,10 +23,11 @@ defined( 'ABSPATH' ) || exit;
 
 final class WC_PLZ_Filter {
 
-    const VERSION = '2.7.2';
-    const COOKIE  = 'wc_delivery_mode';
-    const OPT     = 'wc_plz_filter_v2';
-    const CACHE   = 'wc_plz_local_codes';
+    const VERSION         = '2.7.3';
+    const COOKIE          = 'wc_delivery_mode';
+    const OPT             = 'wc_plz_filter_v2';
+    const CACHE           = 'wc_plz_local_codes';
+    const HIDDEN_VERSION  = 'wc_plz_hidden_version';
 
     private static ?self $instance = null;
     private ?array $settings_cache = null;
@@ -65,6 +66,7 @@ final class WC_PLZ_Filter {
 
         add_action( 'wp_enqueue_scripts', [ $this, 'enqueue' ] );
         add_action( 'wp_footer',          [ $this, 'render_popup' ] );
+        add_action( 'rest_api_init',      [ $this, 'register_rest_routes' ] );
 
 
         add_action( 'woocommerce_product_query',      [ $this, 'filter_products' ] );
@@ -79,8 +81,11 @@ final class WC_PLZ_Filter {
         // FOUC-Schutz: Inline-Script im <head> versteckt synchron via localStorage-Cache
         add_action( 'wp_head', [ $this, 'print_head_hide_script' ], 1 );
 
-        // Cache-Invalidation für Hidden-IDs Transient
-        add_action( 'set_object_terms', [ $this, 'maybe_invalidate_hidden_ids' ], 10, 4 );
+        // Cache-Invalidation für Hidden-IDs (versioniertes Cache-Key-Schema, kein wp_options-LIKE-Scan)
+        add_action( 'edited_product_shipping_class',  [ $this, 'invalidate_hidden_ids_cache' ] );
+        add_action( 'created_product_shipping_class', [ $this, 'invalidate_hidden_ids_cache' ] );
+        add_action( 'delete_product_shipping_class',  [ $this, 'invalidate_hidden_ids_cache' ] );
+        add_action( 'set_object_terms',               [ $this, 'maybe_invalidate_hidden_ids' ], 10, 4 );
 
         foreach ( [ 'wp_ajax_', 'wp_ajax_nopriv_' ] as $p ) {
             add_action( $p . 'wc_plz_check',       [ $this, 'ajax_check' ] );
@@ -170,31 +175,28 @@ final class WC_PLZ_Filter {
             return false;
         }
 
+        $plz_int = (int) $plz;
+
         foreach ( $this->get_local_postcodes() as $pattern ) {
-            $pattern = (string) $pattern;
-            
-            if ( empty( $pattern ) && $pattern !== '0' ) {
+            $pattern = trim( (string) $pattern );
+            if ( $pattern === '' ) {
                 continue;
             }
 
-            if ( str_contains( $pattern, '...' ) ) {
-                [ $from, $to ] = explode( '...', $pattern, 2 );
-                if ( $plz >= trim( $from ) && $plz <= trim( $to ) ) {
-                    return true;
-                }
-                continue;
-            }
-
-            if ( str_contains( $pattern, '-' ) ) {
-                [ $from, $to ] = explode( '-', $pattern, 2 );
-                if ( $plz >= trim( $from ) && $plz <= trim( $to ) ) {
+            $separator = str_contains( $pattern, '...' ) ? '...' : ( str_contains( $pattern, '-' ) ? '-' : '' );
+            if ( $separator !== '' ) {
+                [ $from, $to ] = array_map( 'trim', explode( $separator, $pattern, 2 ) );
+                if ( ctype_digit( $from ) && ctype_digit( $to )
+                     && strlen( $from ) === 5 && strlen( $to ) === 5
+                     && $plz_int >= (int) $from && $plz_int <= (int) $to ) {
                     return true;
                 }
                 continue;
             }
 
             if ( str_ends_with( $pattern, '*' ) ) {
-                if ( str_starts_with( $plz, rtrim( $pattern, '*' ) ) ) {
+                $prefix = rtrim( $pattern, '*' );
+                if ( $prefix !== '' && ctype_digit( $prefix ) && str_starts_with( $plz, $prefix ) ) {
                     return true;
                 }
                 continue;
@@ -243,7 +245,8 @@ final class WC_PLZ_Filter {
         }
 
         sort( $excluded_ids );
-        $cache_key = 'wc_plz_hidden_' . md5( implode( ',', $excluded_ids ) );
+        $version   = (int) get_option( self::HIDDEN_VERSION, 1 );
+        $cache_key = 'wc_plz_hidden_v' . $version . '_' . md5( implode( ',', $excluded_ids ) );
         $cached    = get_transient( $cache_key );
         if ( is_array( $cached ) ) {
             return $cached;
@@ -276,15 +279,12 @@ final class WC_PLZ_Filter {
     }
 
     /**
-     * Löscht alle hidden-ids Transients (über alle excluded_classes-Kombinationen).
+     * Bump der Hidden-IDs-Version → alle existierenden Transients (mit alter Version
+     * im Key) werden ignoriert und verfallen via TTL. Kein wp_options-LIKE-Scan.
      */
     public function invalidate_hidden_ids_cache(): void {
-        global $wpdb;
-        $wpdb->query(
-            "DELETE FROM {$wpdb->options}
-             WHERE option_name LIKE '\\_transient\\_wc\\_plz\\_hidden\\_%'
-                OR option_name LIKE '\\_transient\\_timeout\\_wc\\_plz\\_hidden\\_%'"
-        );
+        $current = (int) get_option( self::HIDDEN_VERSION, 1 );
+        update_option( self::HIDDEN_VERSION, $current + 1, false );
     }
 
     /**
@@ -396,12 +396,10 @@ final class WC_PLZ_Filter {
             return;
         }
         
-        $plz = $data['shipping_postcode'] ?? $data['billing_postcode'] ?? '';
-        if ( ! empty( $_POST['ship_to_different_address'] ) ) {
-            $plz = $data['shipping_postcode'] ?? '';
-        } else {
-            $plz = $data['billing_postcode'] ?? '';
-        }
+        $use_shipping = ! empty( $data['ship_to_different_address'] );
+        $plz = $use_shipping
+            ? ( $data['shipping_postcode'] ?? '' )
+            : ( $data['billing_postcode']  ?? '' );
 
         if ( empty( $plz ) ) {
             return;
@@ -483,12 +481,37 @@ final class WC_PLZ_Filter {
 
     public function ajax_hidden_ids(): void {
         // Kein Nonce-Check: Liste ist nicht sensitiv (gleiche Info via Shop-Source einsehbar),
-        // aber Antwort hängt nur von Settings ab → identisch für alle User → Browser-Cache OK.
-        nocache_headers();
+        // aber Antwort hängt nur von Settings ab → identisch für alle User → Browser-/Edge-Cache OK.
+        // WP setzt via send_headers() / nocache_headers() früher Pragma + Expires + Cache-Control.
+        // Wir strippen die alle und setzen Cache-Control sauber neu, sonst bleiben konfliktäre Header.
+        header_remove( 'Pragma' );
+        header_remove( 'Expires' );
+        header_remove( 'Cache-Control' );
         header( 'Cache-Control: public, max-age=300' );
 
         wp_send_json_success( [
             'ids' => $this->get_hidden_product_ids(),
+        ] );
+    }
+
+    /* --- REST: Frischer Nonce (Cache-Bypass für WP Rocket & Co.) --- */
+
+    /**
+     * Page-Caches (WP Rocket, Cloudflare APO, …) backen den Nonce in HTML mit ein.
+     * Nach > 12 h läuft der Nonce-Tick ab und alle AJAX-Calls scheitern mit "-1".
+     * Dieser Endpoint liefert immer einen frischen Nonce, no-cache, anonym.
+     */
+    public function register_rest_routes(): void {
+        register_rest_route( 'wc-plz/v1', '/nonce', [
+            'methods'             => 'GET',
+            'permission_callback' => '__return_true',
+            'callback'            => function () {
+                $response = new \WP_REST_Response( [
+                    'nonce' => wp_create_nonce( 'wc_plz_nonce' ),
+                ] );
+                $response->header( 'Cache-Control', 'no-store, max-age=0' );
+                return $response;
+            },
         ] );
     }
 
@@ -549,6 +572,7 @@ final class WC_PLZ_Filter {
         wp_localize_script( 'wc-plz-filter', 'wcPlz', [
             'ajaxUrl'              => admin_url( 'admin-ajax.php' ),
             'nonce'                => wp_create_nonce( 'wc_plz_nonce' ),
+            'nonceUrl'             => rest_url( 'wc-plz/v1/nonce' ),
             'cookieName'           => self::COOKIE,
             'cookieDays'           => (int) $settings['cookie_days'],
             'isCheckout'           => is_checkout() ? 1 : 0,
@@ -580,7 +604,7 @@ final class WC_PLZ_Filter {
                 if (raw.indexOf('post:') !== 0) return;
                 var ids = JSON.parse(localStorage.getItem('wc_plz_hidden_ids') || '[]');
                 if (!ids.length) return;
-                var sel = ids.map(function(id){ return '.pdb' + id + ', .post-' + id; }).join(',');
+                var sel = ids.map(function(id){ return '.pdb' + id; }).join(',');
                 if (!sel) return;
                 var s = document.createElement('style');
                 s.id = 'wc-plz-hide-style';
