@@ -4,7 +4,7 @@
  * Plugin Name:  WC PLZ-Filter
  * Plugin URI:   https://fischer.digitale-theke.com
  * Description:  PLZ-Popup mit drei Modi (Abholung, Lokale Lieferung, Postversand). Filtert Produkte dynamisch nach WooCommerce-Versandklassen und füllt den Checkout vor.
- * Version:      2.6.4
+ * Version:      2.6.5
  * Author:       Metzgerei Fischer
  * License:      Proprietary
  * License URI:  https://fischer.digitale-theke.com
@@ -24,7 +24,7 @@ defined( 'ABSPATH' ) || exit;
 
 final class WC_PLZ_Filter {
 
-    const VERSION = '2.6.4';
+    const VERSION = '2.6.5';
     const COOKIE  = 'wc_delivery_mode';
     const OPT     = 'wc_plz_filter_v2';
     const CACHE   = 'wc_plz_local_codes';
@@ -214,11 +214,26 @@ final class WC_PLZ_Filter {
         }
 
         $settings = $this->get_settings();
-        $excluded = array_filter( array_map( 'intval', (array) $settings['excluded_classes'] ) );
+        $excluded_ids = array_filter( array_map( 'intval', (array) $settings['excluded_classes'] ) );
 
-        if ( empty( $excluded ) ) {
+        if ( empty( $excluded_ids ) ) {
             if ( $debug ) {
-                echo "<script>console.error('PLZ Debug FEHLER: Abbruch! Es wurden keine ausgeschlossenen Versandklassen in den Plugin-Einstellungen auf dem Live-Server gefunden. (IDs sind evtl. anders als im Testshop!)');</script>\n";
+                echo "<script>console.error('PLZ Debug FEHLER: Keine ausgeschlossenen Versandklassen in den Einstellungen gefunden.');</script>\n";
+            }
+            return;
+        }
+
+        // term_id ≠ term_taxonomy_id – Slugs holen damit WP_Tax_Query korrekt auflöst
+        $excluded_slugs = get_terms( [
+            'taxonomy'   => 'product_shipping_class',
+            'include'    => $excluded_ids,
+            'fields'     => 'slugs',
+            'hide_empty' => false,
+        ] );
+
+        if ( empty( $excluded_slugs ) || is_wp_error( $excluded_slugs ) ) {
+            if ( $debug ) {
+                echo "<script>console.error('PLZ Debug FEHLER: Versandklassen-Slugs konnten nicht aufgelöst werden. IDs: " . esc_js( implode( ', ', $excluded_ids ) ) . "');</script>\n";
             }
             return;
         }
@@ -232,15 +247,15 @@ final class WC_PLZ_Filter {
             ],
             [
                 'taxonomy' => 'product_shipping_class',
-                'field'    => 'term_id',
-                'terms'    => $excluded,
+                'field'    => 'slug',
+                'terms'    => $excluded_slugs,
                 'operator' => 'NOT IN',
             ],
         ];
         $q->set( 'tax_query', $tax );
 
         if ( $debug ) {
-            echo "<script>console.log('PLZ Debug: Filter angewendet. Ausgeschlossene IDs:', " . wp_json_encode( $excluded ) . ");</script>\n";
+            echo "<script>console.log('PLZ Debug: Filter angewendet. Slugs:', " . wp_json_encode( $excluded_slugs ) . ");</script>\n";
             echo "<script>console.log('PLZ Debug: tax_query gesetzt auf:', " . wp_json_encode( $tax ) . ");</script>\n";
 
             add_filter( 'posts_request', function ( string $sql, \WP_Query $query ) use ( $q ) {
