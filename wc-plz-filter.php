@@ -297,9 +297,15 @@ final class WC_PLZ_Filter {
     }
 
     public function filter_products( \WP_Query $q ): void {
-        $is_valid_query = ( $q->is_main_query() || $q->get( 'wc_query' ) === 'product_query' );
+        if ( is_admin() ) {
+            return;
+        }
 
-        if ( is_admin() || ! $is_valid_query ) {
+        $post_type = $q->get( 'post_type' );
+        $is_product = ( $post_type === 'product' || ( is_array( $post_type ) && in_array( 'product', $post_type, true ) ) );
+        $is_valid = ( $q->is_main_query() || $q->get( 'wc_query' ) === 'product_query' || $is_product );
+
+        if ( ! $is_valid ) {
             return;
         }
 
@@ -460,13 +466,16 @@ final class WC_PLZ_Filter {
         $local    = $this->is_local( $plz );
         $settings = $this->get_settings();
 
+        $mode     = $local ? 'local' : 'post';
+
         wp_send_json_success( [
-            'plz'      => $plz,
-            'is_local' => $local,
-            'mode'     => $local ? 'local' : 'post',
-            'message'  => $local
+            'plz'        => $plz,
+            'is_local'   => $local,
+            'mode'       => $mode,
+            'message'    => $local
                 ? 'Wir liefern in Ihre PLZ ' . $plz . '! Alle Produkte verfügbar.'
                 : $settings['post_msg'],
+            'hidden_ids' => ( $mode === 'post' ) ? $this->get_hidden_product_ids() : [],
         ] );
     }
 
@@ -512,7 +521,11 @@ final class WC_PLZ_Filter {
             $this->stats->log_event( $wc_plz, $mode );
         }
 
-        wp_send_json_success( [ 'mode' => $mode, 'plz' => $plz ] );
+        wp_send_json_success( [ 
+            'mode' => $mode, 
+            'plz'  => $plz,
+            'hidden_ids' => ( $mode === 'post' ) ? $this->get_hidden_product_ids() : [],
+        ] );
     }
 
     /* --- Frontend: Scripts & Styles --- */
@@ -567,7 +580,7 @@ final class WC_PLZ_Filter {
                 if (raw.indexOf('post:') !== 0) return;
                 var ids = JSON.parse(localStorage.getItem('wc_plz_hidden_ids') || '[]');
                 if (!ids.length) return;
-                var sel = ids.map(function(id){ return '.pdb' + parseInt(id, 10); }).join(',');
+                var sel = ids.map(function(id){ return '.pdb' + id + ', .post-' + id; }).join(',');
                 if (!sel) return;
                 var s = document.createElement('style');
                 s.id = 'wc-plz-hide-style';

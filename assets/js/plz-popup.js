@@ -159,6 +159,9 @@
         plz: plz,
       },
       function (res) {
+        if (res && res.success && res.data && res.data.hidden_ids) {
+          localStorage.setItem("wc_plz_hidden_ids", JSON.stringify(res.data.hidden_ids));
+        }
         if (callback) callback(res);
       },
     );
@@ -272,7 +275,7 @@
       
       if (!ids.length) return;
       
-      var sel = ids.map(function(id){ return ".pdb" + parseInt(id, 10); }).join(",");
+      var sel = ids.map(function(id){ return ".pdb" + id + ", .post-" + id; }).join(",");
       if (!sel) return;
       
       if (!styleEl) {
@@ -343,6 +346,9 @@
         }
 
         var r = res.data;
+        if (r.hidden_ids) {
+          localStorage.setItem("wc_plz_hidden_ids", JSON.stringify(r.hidden_ids));
+        }
         setFeedback(r.message, r.is_local ? "ok" : "warn");
 
         saveState(r.mode, r.plz);
@@ -452,12 +458,21 @@
         if (/^\d{5}$/.test(newPlz) && newPlz !== state.plz && state.mode) {
           state.plz = newPlz;
           setCookie(COOKIE, state.mode + ":" + newPlz, DAYS);
-          post(D.ajaxUrl, {
-            action: "wc_plz_save",
-            nonce: D.nonce,
-            mode: state.mode,
-            plz: newPlz,
-          });
+          post(
+            D.ajaxUrl,
+            {
+              action: "wc_plz_save",
+              nonce: D.nonce,
+              mode: state.mode,
+              plz: newPlz,
+            },
+            function (res) {
+              if (res && res.success && res.data && res.data.hidden_ids) {
+                localStorage.setItem("wc_plz_hidden_ids", JSON.stringify(res.data.hidden_ids));
+                applyHiddenIds();
+              }
+            }
+          );
         }
       });
     }
