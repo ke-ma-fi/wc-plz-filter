@@ -1,5 +1,5 @@
 /**
- * WC PLZ-Filter v2.4 – Frontend (Vanilla JS, no jQuery)
+ * WC PLZ-Filter v2.7.2 – Frontend (Vanilla JS, no jQuery)
  * Popup (PLZ + Abholung), Badge with Tooltip, Checkout-Sync
  *
  * @copyright Metzgerei Fischer. All rights reserved.
@@ -241,6 +241,53 @@
     fadeIn(badge, 300);
   }
 
+  /* ── Hidden IDs Fetching ────────────────────── */
+
+  function fetchHiddenIds() {
+    var xhr = new XMLHttpRequest();
+    var url = D.ajaxUrl + "?action=wc_plz_hidden_ids";
+    xhr.open("GET", url, true);
+    xhr.onreadystatechange = function () {
+      if (xhr.readyState !== 4) return;
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          var res = JSON.parse(xhr.responseText);
+          if (res.success && res.data && res.data.ids) {
+            localStorage.setItem("wc_plz_hidden_ids", JSON.stringify(res.data.ids));
+            applyHiddenIds();
+          }
+        } catch (e) {}
+      }
+    };
+    xhr.send();
+  }
+
+  function applyHiddenIds() {
+    var styleEl = document.getElementById("wc-plz-hide-style");
+    if (state.mode === "post") {
+      var ids = [];
+      try {
+        ids = JSON.parse(localStorage.getItem("wc_plz_hidden_ids") || "[]");
+      } catch(e) {}
+      
+      if (!ids.length) return;
+      
+      var sel = ids.map(function(id){ return ".pdb" + parseInt(id, 10); }).join(",");
+      if (!sel) return;
+      
+      if (!styleEl) {
+        styleEl = document.createElement("style");
+        styleEl.id = "wc-plz-hide-style";
+        (document.head || document.documentElement).appendChild(styleEl);
+      }
+      styleEl.textContent = sel + "{display:none!important}";
+    } else {
+      if (styleEl) {
+        styleEl.textContent = "";
+      }
+    }
+  }
+
   /* ── Prefill PLZ (JS fallback for checkout) ── */
 
   function prefillPostcode() {
@@ -323,6 +370,9 @@
     } else if (!parseInt(D.isCheckout, 10)) {
       setTimeout(openPopup, 800);
     }
+
+    applyHiddenIds();
+    fetchHiddenIds();
 
     prefillPostcode();
 
@@ -420,9 +470,7 @@
       // Page was restored from bfcache — re-read cookie
       var fresh = parseState();
       if (fresh.mode !== state.mode || fresh.plz !== state.plz) {
-        state = fresh;
-        updateBadge(state.mode, state.plz);
-        prefillPostcode();
+        location.reload();
       }
     }
   });

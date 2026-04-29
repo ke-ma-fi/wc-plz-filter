@@ -4,7 +4,7 @@
  * Plugin Name:  WC PLZ-Filter
  * Plugin URI:   https://fischer.digitale-theke.com
  * Description:  PLZ-Popup mit drei Modi (Abholung, Lokale Lieferung, Postversand). Filtert Produkte dynamisch nach WooCommerce-Versandklassen und füllt den Checkout vor.
- * Version:      2.7.1
+ * Version:      2.7.2
  * Author:       Metzgerei Fischer
  * License:      Proprietary
  * License URI:  https://fischer.digitale-theke.com
@@ -24,7 +24,7 @@ defined( 'ABSPATH' ) || exit;
 
 final class WC_PLZ_Filter {
 
-    const VERSION = '2.7.1';
+    const VERSION = '2.7.2';
     const COOKIE  = 'wc_delivery_mode';
     const OPT     = 'wc_plz_filter_v2';
     const CACHE   = 'wc_plz_local_codes';
@@ -71,9 +71,22 @@ final class WC_PLZ_Filter {
         add_action( 'woocommerce_product_query',      [ $this, 'filter_products' ] );
         add_filter( 'woocommerce_checkout_get_value', [ $this, 'prefill_checkout' ], 10, 2 );
 
+        // fgf-Hardening: Server-side enforcement (cookie ist client-controlled)
+        add_action( 'woocommerce_check_cart_items',        [ $this, 'validate_cart_items' ] );
+        add_action( 'woocommerce_after_checkout_validation', [ $this, 'validate_checkout_plz' ], 10, 2 );
+        add_action( 'woocommerce_single_product_summary',  [ $this, 'block_excluded_single' ], 1 );
+        add_filter( 'woocommerce_is_purchasable',           [ $this, 'block_excluded_purchasable' ], 10, 2 );
+
+        // FOUC-Schutz: Inline-Script im <head> versteckt synchron via localStorage-Cache
+        add_action( 'wp_head', [ $this, 'print_head_hide_script' ], 1 );
+
+        // Cache-Invalidation für Hidden-IDs Transient
+        add_action( 'set_object_terms', [ $this, 'maybe_invalidate_hidden_ids' ], 10, 4 );
+
         foreach ( [ 'wp_ajax_', 'wp_ajax_nopriv_' ] as $p ) {
-            add_action( $p . 'wc_plz_check', [ $this, 'ajax_check' ] );
-            add_action( $p . 'wc_plz_save',  [ $this, 'ajax_save' ] );
+            add_action( $p . 'wc_plz_check',       [ $this, 'ajax_check' ] );
+            add_action( $p . 'wc_plz_save',        [ $this, 'ajax_save' ] );
+            add_action( $p . 'wc_plz_hidden_ids',  [ $this, 'ajax_hidden_ids' ] );
         }
     }
 
@@ -198,6 +211,92 @@ final class WC_PLZ_Filter {
 
     /* --- Produktfilterung --- */
 
+    /**
+     * Liefert die Slugs der ausgeschlossenen Versandklassen.
+     * Slugs statt term_ids, weil term_id ≠ term_taxonomy_id je nach DB-Historie.
+     */
+    private function get_excluded_slugs(): array {
+        $settings     = $this->get_settings();
+        $excluded_ids = array_filter( array_map( 'intval', (array) $settings['excluded_classes'] ) );
+        if ( empty( $excluded_ids ) ) {
+            return [];
+        }
+
+        $slugs = get_terms( [
+            'taxonomy'   => 'product_shipping_class',
+            'include'    => $excluded_ids,
+            'fields'     => 'slugs',
+            'hide_empty' => false,
+        ] );
+
+        return ( ! is_wp_error( $slugs ) && is_array( $slugs ) ) ? $slugs : [];
+    }
+
+    /**
+     * Liefert alle Produkt-IDs deren Versandklasse ausgeschlossen ist.
+     * Transient-cached (12h); invalidiert bei Settings-Save oder Term-Zuweisung.
+     */
+    public function get_hidden_product_ids(): array {
+        $settings     = $this->get_settings();
+        $excluded_ids = array_filter( array_map( 'intval', (array) $settings['excluded_classes'] ) );
+        if ( empty( $excluded_ids ) ) {
+            return [];
+        }
+
+        sort( $excluded_ids );
+        $cache_key = 'wc_plz_hidden_' . md5( implode( ',', $excluded_ids ) );
+        $cached    = get_transient( $cache_key );
+        if ( is_array( $cached ) ) {
+            return $cached;
+        }
+
+        $excluded_slugs = $this->get_excluded_slugs();
+        if ( empty( $excluded_slugs ) ) {
+            set_transient( $cache_key, [], 12 * HOUR_IN_SECONDS );
+            return [];
+        }
+
+        global $wpdb;
+        $placeholders = implode( ', ', array_fill( 0, count( $excluded_slugs ), '%s' ) );
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+        $hidden_ids = $wpdb->get_col(
+            $wpdb->prepare(
+                "SELECT DISTINCT tr.object_id
+                 FROM {$wpdb->term_relationships} tr
+                 INNER JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id
+                 INNER JOIN {$wpdb->terms} t ON t.term_id = tt.term_id
+                 WHERE tt.taxonomy = 'product_shipping_class'
+                 AND t.slug IN ($placeholders)",
+                ...$excluded_slugs
+            )
+        );
+
+        $hidden_ids = array_map( 'intval', (array) $hidden_ids );
+        set_transient( $cache_key, $hidden_ids, 12 * HOUR_IN_SECONDS );
+        return $hidden_ids;
+    }
+
+    /**
+     * Löscht alle hidden-ids Transients (über alle excluded_classes-Kombinationen).
+     */
+    public function invalidate_hidden_ids_cache(): void {
+        global $wpdb;
+        $wpdb->query(
+            "DELETE FROM {$wpdb->options}
+             WHERE option_name LIKE '\\_transient\\_wc\\_plz\\_hidden\\_%'
+                OR option_name LIKE '\\_transient\\_timeout\\_wc\\_plz\\_hidden\\_%'"
+        );
+    }
+
+    /**
+     * Hook für set_object_terms — invalidiert bei product_shipping_class Änderungen.
+     */
+    public function maybe_invalidate_hidden_ids( $object_id, $terms, $tt_ids, $taxonomy ): void {
+        if ( $taxonomy === 'product_shipping_class' ) {
+            $this->invalidate_hidden_ids_cache();
+        }
+    }
+
     public function filter_products( \WP_Query $q ): void {
         $is_valid_query = ( $q->is_main_query() || $q->get( 'wc_query' ) === 'product_query' );
 
@@ -210,20 +309,8 @@ final class WC_PLZ_Filter {
             return;
         }
 
-        $settings     = $this->get_settings();
-        $excluded_ids = array_filter( array_map( 'intval', (array) $settings['excluded_classes'] ) );
-        if ( empty( $excluded_ids ) ) {
-            return;
-        }
-
-        // field: 'slug' verwenden – term_id ≠ term_taxonomy_id je nach Datenbankhistorie
-        $excluded_slugs = get_terms( [
-            'taxonomy'   => 'product_shipping_class',
-            'include'    => $excluded_ids,
-            'fields'     => 'slugs',
-            'hide_empty' => false,
-        ] );
-        if ( empty( $excluded_slugs ) || is_wp_error( $excluded_slugs ) ) {
+        $excluded_slugs = $this->get_excluded_slugs();
+        if ( empty( $excluded_slugs ) ) {
             return;
         }
 
@@ -242,6 +329,112 @@ final class WC_PLZ_Filter {
             ],
         ];
         $q->set( 'tax_query', $tax );
+    }
+
+    /* --- fgf-Hardening: Server-Side Enforcement --- */
+
+    /**
+     * Cart-Validation: Postversand-Modus + Produkt mit ausgeschlossener Klasse → Notice.
+     */
+    public function validate_cart_items(): void {
+        $state = $this->get_state();
+        if ( $state['mode'] !== 'post' ) {
+            return;
+        }
+
+        $hidden_ids = $this->get_hidden_product_ids();
+        if ( empty( $hidden_ids ) ) {
+            return;
+        }
+
+        $hidden_lookup = array_flip( $hidden_ids );
+
+        foreach ( WC()->cart->get_cart() as $item ) {
+            $product_id = (int) $item['product_id'];
+            if ( isset( $hidden_lookup[ $product_id ] ) ) {
+                $product = $item['data'];
+                wc_add_notice(
+                    sprintf(
+                        '%s ist im Postversand nicht verfügbar. Bitte aus dem Warenkorb entfernen oder die Lieferart ändern.',
+                        esc_html( $product->get_name() )
+                    ),
+                    'error'
+                );
+            }
+        }
+    }
+
+    /**
+     * Single-Product-Page: blockiert Add-to-Cart wenn Produkt ausgeschlossen ist.
+     */
+    public function block_excluded_purchasable( $purchasable, $product ): bool {
+        if ( ! $purchasable ) {
+            return $purchasable;
+        }
+        $state = $this->get_state();
+        if ( $state['mode'] !== 'post' ) {
+            return $purchasable;
+        }
+        $hidden_ids = $this->get_hidden_product_ids();
+        if ( empty( $hidden_ids ) ) {
+            return $purchasable;
+        }
+        return ! in_array( (int) $product->get_id(), $hidden_ids, true );
+    }
+
+    /**
+     * Checkout-Validation: PLZ muss zum Mode passen.
+     */
+    public function validate_checkout_plz( $data, $errors ): void {
+        $state = $this->get_state();
+        if ( empty( $state['mode'] ) || ! in_array( $state['mode'], [ 'local', 'post' ], true ) ) {
+            return;
+        }
+        
+        $plz = $data['shipping_postcode'] ?? $data['billing_postcode'] ?? '';
+        if ( ! empty( $_POST['ship_to_different_address'] ) ) {
+            $plz = $data['shipping_postcode'] ?? '';
+        } else {
+            $plz = $data['billing_postcode'] ?? '';
+        }
+
+        if ( empty( $plz ) ) {
+            return;
+        }
+
+        $is_local = $this->is_local( $plz );
+
+        if ( $state['mode'] === 'local' && ! $is_local ) {
+            $errors->add( 'validation', 'Sie haben die Lieferart "Lokale Lieferung" gewählt, aber Ihre Postleitzahl liegt nicht in unserem lokalen Liefergebiet. Bitte wählen Sie Postversand im Footer-Popup.' );
+        } elseif ( $state['mode'] === 'post' && $is_local ) {
+            $errors->add( 'validation', 'Sie haben die Lieferart "Postversand" gewählt, aber Ihre Postleitzahl liegt in unserem lokalen Liefergebiet. Bitte wählen Sie Lokale Lieferung im Footer-Popup.' );
+        }
+    }
+
+    /**
+     * Single-Product-Page: Hinweis-Notice rendern wenn Produkt ausgeschlossen ist.
+     */
+    public function block_excluded_single(): void {
+        if ( ! is_product() ) {
+            return;
+        }
+        $state = $this->get_state();
+        if ( $state['mode'] !== 'post' ) {
+            return;
+        }
+
+        global $product;
+        if ( ! $product instanceof \WC_Product ) {
+            return;
+        }
+
+        $hidden_ids = $this->get_hidden_product_ids();
+        if ( ! in_array( (int) $product->get_id(), $hidden_ids, true ) ) {
+            return;
+        }
+
+        echo '<div class="woocommerce-info" style="margin-top:16px;">Dieses Produkt ist im Postversand nicht verfügbar. Bitte wählen Sie eine andere Lieferart.</div>';
+        remove_action( 'woocommerce_single_product_summary', 'woocommerce_template_single_add_to_cart', 30 );
     }
 
     /* --- Checkout Prefill --- */
@@ -275,6 +468,19 @@ final class WC_PLZ_Filter {
             'message'  => $local
                 ? 'Wir liefern in Ihre PLZ ' . $plz . '! Alle Produkte verfügbar.'
                 : $settings['post_msg'],
+        ] );
+    }
+
+    /* --- AJAX: Hidden Product IDs (cache-friendly, browser-cacheable) --- */
+
+    public function ajax_hidden_ids(): void {
+        // Kein Nonce-Check: Liste ist nicht sensitiv (gleiche Info via Shop-Source einsehbar),
+        // aber Antwort hängt nur von Settings ab → identisch für alle User → Browser-Cache OK.
+        nocache_headers();
+        header( 'Cache-Control: public, max-age=300' );
+
+        wp_send_json_success( [
+            'ids' => $this->get_hidden_product_ids(),
         ] );
     }
 
@@ -318,7 +524,6 @@ final class WC_PLZ_Filter {
         }
 
         $url      = plugin_dir_url( __FILE__ );
-        $state    = $this->get_state();
         $settings = $this->get_settings();
 
         wp_enqueue_style( 'wc-plz-filter', $url . 'assets/css/plz-popup.css', [], self::VERSION );
@@ -327,12 +532,13 @@ final class WC_PLZ_Filter {
             'strategy'  => 'defer',
         ] );
 
+        // Cache-friendly: KEINE user-spezifischen Daten (kein state, kein PLZ).
+        // JS liest Cookie selbst und holt hidden_ids per AJAX (browser-cacheable).
         wp_localize_script( 'wc-plz-filter', 'wcPlz', [
             'ajaxUrl'              => admin_url( 'admin-ajax.php' ),
             'nonce'                => wp_create_nonce( 'wc_plz_nonce' ),
             'cookieName'           => self::COOKIE,
             'cookieDays'           => (int) $settings['cookie_days'],
-            'state'                => $state,
             'isCheckout'           => is_checkout() ? 1 : 0,
             'badgePosition'        => $settings['badge_position'],
             'badgeTooltipAbholung' => $settings['badge_tooltip_abholung'],
@@ -340,53 +546,38 @@ final class WC_PLZ_Filter {
             'badgeTooltipPost'     => $settings['badge_tooltip_post'],
             'badgeTooltipSkipped'  => $settings['badge_tooltip_skipped'],
         ] );
+    }
 
-        // JS-Layer: versteckt Produkte im fgf-Grid (pdb{ID}-Klassen) die kein Standard-WC-Hook erreicht
-        if ( $state['mode'] === 'post' ) {
-            $excluded_ids = array_filter( array_map( 'intval', (array) $settings['excluded_classes'] ) );
-
-            if ( ! empty( $excluded_ids ) ) {
-                $excluded_slugs = get_terms( [
-                    'taxonomy'   => 'product_shipping_class',
-                    'include'    => $excluded_ids,
-                    'fields'     => 'slugs',
-                    'hide_empty' => false,
-                ] );
-
-                if ( ! empty( $excluded_slugs ) && ! is_wp_error( $excluded_slugs ) ) {
-                    global $wpdb;
-                    $placeholders = implode( ', ', array_fill( 0, count( $excluded_slugs ), '%s' ) );
-                    // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-                    $hidden_ids = $wpdb->get_col(
-                        $wpdb->prepare(
-                            "SELECT DISTINCT tr.object_id
-                             FROM {$wpdb->term_relationships} tr
-                             INNER JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id
-                             INNER JOIN {$wpdb->terms} t ON t.term_id = tt.term_id
-                             WHERE tt.taxonomy = 'product_shipping_class'
-                             AND t.slug IN ($placeholders)",
-                            ...$excluded_slugs
-                        )
-                    );
-
-                    if ( ! empty( $hidden_ids ) ) {
-                        $ids_json = wp_json_encode( array_map( 'intval', $hidden_ids ) );
-                        wp_add_inline_script(
-                            'wc-plz-filter',
-                            "(function(){var ids={$ids_json};" .
-                            'function plzHide(){ids.forEach(function(id){' .
-                            'document.querySelectorAll(".pdb"+id).forEach(function(el){el.style.display="none";});' .
-                            '});}' .
-                            'document.readyState==="loading"' .
-                            '?document.addEventListener("DOMContentLoaded",plzHide)' .
-                            ':plzHide();' .
-                            '})();',
-                            'after'
-                        );
-                    }
-                }
-            }
+    /**
+     * Inline-Script im <head>: liest Cookie + localStorage synchron und injiziert
+     * vor Body-Parse einen <style>-Block der ausgeschlossene Produkte versteckt.
+     * Cache-friendly weil rein client-seitig (statisches HTML für alle User).
+     * Verhindert FOUC für returning visitors.
+     */
+    public function print_head_hide_script(): void {
+        if ( is_admin() ) {
+            return;
         }
+        ?>
+        <script id="wc-plz-head-hide">
+        (function(){
+            try {
+                var m = document.cookie.match(/(?:^|; )<?php echo esc_js( self::COOKIE ); ?>=([^;]*)/);
+                if (!m) return;
+                var raw = decodeURIComponent(m[1]);
+                if (raw.indexOf('post:') !== 0) return;
+                var ids = JSON.parse(localStorage.getItem('wc_plz_hidden_ids') || '[]');
+                if (!ids.length) return;
+                var sel = ids.map(function(id){ return '.pdb' + parseInt(id, 10); }).join(',');
+                if (!sel) return;
+                var s = document.createElement('style');
+                s.id = 'wc-plz-hide-style';
+                s.textContent = sel + '{display:none!important}';
+                (document.head || document.documentElement).appendChild(s);
+            } catch (e) {}
+        })();
+        </script>
+        <?php
     }
 
     /* --- Frontend: Popup HTML --- */
