@@ -307,6 +307,20 @@ final class WC_PLZ_Filter {
             return $posts;
         }
 
+        $debug = isset( $_GET['plz_debug'] ) && current_user_can( 'manage_woocommerce' );
+
+        if ( $debug ) {
+            // Alle Queries loggen – egal ob Produkte oder nicht
+            echo '<script>console.log("PLZ global hook:", ' . wp_json_encode( [
+                'post_type' => $query->get( 'post_type' ),
+                'wc_query'  => $query->get( 'wc_query' ),
+                'is_main'   => $query->is_main_query(),
+                'count'     => count( $posts ),
+                'first_ids' => array_slice( array_column( $posts, 'ID' ), 0, 5 ),
+                'first_types' => array_unique( array_slice( array_column( $posts, 'post_type' ), 0, 5 ) ),
+            ] ) . ');</script>' . "\n";
+        }
+
         $state = $this->get_state();
         if ( empty( $state['mode'] ) || $state['mode'] !== 'post' ) {
             return $posts;
