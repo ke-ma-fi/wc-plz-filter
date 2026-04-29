@@ -240,10 +240,35 @@ final class WC_PLZ_Filter {
         $q->set( 'tax_query', $tax );
 
         if ( $debug ) {
-            $query_vars_json = wp_json_encode( $q->query_vars );
-            if ( $query_vars_json ) {
-                echo "<script>console.log('PLZ Debug ERFOLG! Filter wurde angewendet. Modifizierte Query:', " . $query_vars_json . ");</script>\n";
-            }
+            echo "<script>console.log('PLZ Debug: Filter angewendet. Ausgeschlossene IDs:', " . wp_json_encode( $excluded ) . ");</script>\n";
+            echo "<script>console.log('PLZ Debug: tax_query gesetzt auf:', " . wp_json_encode( $tax ) . ");</script>\n";
+
+            add_filter( 'posts_request', function ( string $sql, \WP_Query $query ) use ( $q ) {
+                if ( $query !== $q ) {
+                    return $sql;
+                }
+                echo "<script>console.log('PLZ Debug SQL:', " . wp_json_encode( $sql ) . ");</script>\n";
+                return $sql;
+            }, 10, 2 );
+
+            add_filter( 'the_posts', function ( array $posts, \WP_Query $query ) use ( $q ) {
+                if ( $query !== $q ) {
+                    return $posts;
+                }
+                $info = [];
+                foreach ( $posts as $post ) {
+                    $terms  = get_the_terms( $post->ID, 'product_shipping_class' );
+                    $info[] = [
+                        'id'             => $post->ID,
+                        'name'           => $post->post_title,
+                        'shipping_class' => $terms
+                            ? array_map( fn( $t ) => $t->slug . ' (id:' . $t->term_id . ')', $terms )
+                            : [ '– keine –' ],
+                    ];
+                }
+                echo "<script>console.log('PLZ Debug: " . count( $posts ) . " Produkte nach Filter:', " . wp_json_encode( $info ) . ");</script>\n";
+                return $posts;
+            }, 10, 2 );
         }
     }
 
