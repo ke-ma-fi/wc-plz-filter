@@ -254,9 +254,40 @@ final class WC_PLZ_Filter {
         ];
         $q->set( 'tax_query', $tax );
 
+        // Stufe 2: PHP-seitiges Nachfiltern – greift auch wenn SQL-Filter umgangen wird
+        // Identifikation über wc_query statt Objekt-Identität (robuster gegen WooCommerce-Internals)
+        add_filter( 'the_posts', function ( array $posts, \WP_Query $query ) use ( $excluded_slugs, $debug ) {
+            if ( $query->get( 'wc_query' ) !== 'product_query' ) {
+                return $posts;
+            }
+
+            $before = count( $posts );
+            $posts  = array_values( array_filter( $posts, function ( \WP_Post $post ) use ( $excluded_slugs ) {
+                $terms = get_the_terms( $post->ID, 'product_shipping_class' );
+                if ( empty( $terms ) || is_wp_error( $terms ) ) {
+                    return true;
+                }
+                foreach ( $terms as $term ) {
+                    if ( in_array( $term->slug, $excluded_slugs, true ) ) {
+                        return false;
+                    }
+                }
+                return true;
+            } ) );
+
+            if ( $debug ) {
+                $after = count( $posts );
+                echo "<script>console.log('PLZ Debug the_posts: " . $before . " → " . $after . " Produkte (PHP-Filter entfernte " . ( $before - $after ) . ")');</script>\n";
+                if ( $before === $after ) {
+                    echo "<script>console.warn('PLZ Debug: PHP-Filter hat nichts entfernt – SQL-Filter hat bereits alle gefiltert, oder Produkte fehlen im Ergebnis.');</script>\n";
+                }
+            }
+
+            return $posts;
+        }, 10, 2 );
+
         if ( $debug ) {
             echo "<script>console.log('PLZ Debug: Filter angewendet. Slugs:', " . wp_json_encode( $excluded_slugs ) . ");</script>\n";
-            echo "<script>console.log('PLZ Debug: tax_query gesetzt auf:', " . wp_json_encode( $tax ) . ");</script>\n";
 
             add_filter( 'posts_request', function ( string $sql, \WP_Query $query ) use ( $q ) {
                 if ( $query !== $q ) {
@@ -264,25 +295,6 @@ final class WC_PLZ_Filter {
                 }
                 echo "<script>console.log('PLZ Debug SQL:', " . wp_json_encode( $sql ) . ");</script>\n";
                 return $sql;
-            }, 10, 2 );
-
-            add_filter( 'the_posts', function ( array $posts, \WP_Query $query ) use ( $q ) {
-                if ( $query !== $q ) {
-                    return $posts;
-                }
-                $info = [];
-                foreach ( $posts as $post ) {
-                    $terms  = get_the_terms( $post->ID, 'product_shipping_class' );
-                    $info[] = [
-                        'id'             => $post->ID,
-                        'name'           => $post->post_title,
-                        'shipping_class' => $terms
-                            ? array_map( fn( $t ) => $t->slug . ' (id:' . $t->term_id . ')', $terms )
-                            : [ '– keine –' ],
-                    ];
-                }
-                echo "<script>console.log('PLZ Debug: " . count( $posts ) . " Produkte nach Filter:', " . wp_json_encode( $info ) . ");</script>\n";
-                return $posts;
             }, 10, 2 );
         }
     }
