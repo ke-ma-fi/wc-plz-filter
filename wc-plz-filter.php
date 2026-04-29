@@ -199,46 +199,35 @@ final class WC_PLZ_Filter {
     /* --- Produktfilterung --- */
 
     public function filter_products( \WP_Query $q ): void {
-        // Erlaube Hauptabfragen UND alle Abfragen, die sich explizit als WooCommerce "product_query" melden
         $is_valid_query = ( $q->is_main_query() || $q->get( 'wc_query' ) === 'product_query' );
-        
+
         if ( is_admin() || ! $is_valid_query ) {
             return;
         }
 
         $state = $this->get_state();
-        $debug = isset( $_GET['plz_debug'] ) && current_user_can( 'manage_woocommerce' );
-
         if ( empty( $state['mode'] ) || $state['mode'] !== 'post' ) {
             return;
         }
 
-        $settings = $this->get_settings();
+        $settings     = $this->get_settings();
         $excluded_ids = array_filter( array_map( 'intval', (array) $settings['excluded_classes'] ) );
-
         if ( empty( $excluded_ids ) ) {
-            if ( $debug ) {
-                echo "<script>console.error('PLZ Debug FEHLER: Keine ausgeschlossenen Versandklassen in den Einstellungen gefunden.');</script>\n";
-            }
             return;
         }
 
-        // term_id ≠ term_taxonomy_id – Slugs holen damit WP_Tax_Query korrekt auflöst
+        // field: 'slug' verwenden – term_id ≠ term_taxonomy_id je nach Datenbankhistorie
         $excluded_slugs = get_terms( [
             'taxonomy'   => 'product_shipping_class',
             'include'    => $excluded_ids,
             'fields'     => 'slugs',
             'hide_empty' => false,
         ] );
-
         if ( empty( $excluded_slugs ) || is_wp_error( $excluded_slugs ) ) {
-            if ( $debug ) {
-                echo "<script>console.error('PLZ Debug FEHLER: Versandklassen-Slugs konnten nicht aufgelöst werden. IDs: " . esc_js( implode( ', ', $excluded_ids ) ) . "');</script>\n";
-            }
             return;
         }
 
-        $tax = (array) $q->get( 'tax_query' );
+        $tax   = (array) $q->get( 'tax_query' );
         $tax[] = [
             'relation' => 'OR',
             [
@@ -253,50 +242,6 @@ final class WC_PLZ_Filter {
             ],
         ];
         $q->set( 'tax_query', $tax );
-
-        // Stufe 2: PHP-seitiges Nachfiltern – greift auch wenn SQL-Filter umgangen wird
-        // Identifikation über wc_query statt Objekt-Identität (robuster gegen WooCommerce-Internals)
-        add_filter( 'the_posts', function ( array $posts, \WP_Query $query ) use ( $excluded_slugs, $debug ) {
-            if ( $query->get( 'wc_query' ) !== 'product_query' ) {
-                return $posts;
-            }
-
-            $before = count( $posts );
-            $posts  = array_values( array_filter( $posts, function ( \WP_Post $post ) use ( $excluded_slugs ) {
-                $terms = get_the_terms( $post->ID, 'product_shipping_class' );
-                if ( empty( $terms ) || is_wp_error( $terms ) ) {
-                    return true;
-                }
-                foreach ( $terms as $term ) {
-                    if ( in_array( $term->slug, $excluded_slugs, true ) ) {
-                        return false;
-                    }
-                }
-                return true;
-            } ) );
-
-            if ( $debug ) {
-                $after = count( $posts );
-                echo "<script>console.log('PLZ Debug the_posts: " . $before . " → " . $after . " Produkte (PHP-Filter entfernte " . ( $before - $after ) . ")');</script>\n";
-                if ( $before === $after ) {
-                    echo "<script>console.warn('PLZ Debug: PHP-Filter hat nichts entfernt – SQL-Filter hat bereits alle gefiltert, oder Produkte fehlen im Ergebnis.');</script>\n";
-                }
-            }
-
-            return $posts;
-        }, 10, 2 );
-
-        if ( $debug ) {
-            echo "<script>console.log('PLZ Debug: Filter angewendet. Slugs:', " . wp_json_encode( $excluded_slugs ) . ");</script>\n";
-
-            add_filter( 'posts_request', function ( string $sql, \WP_Query $query ) use ( $q ) {
-                if ( $query !== $q ) {
-                    return $sql;
-                }
-                echo "<script>console.log('PLZ Debug SQL:', " . wp_json_encode( $sql ) . ");</script>\n";
-                return $sql;
-            }, 10, 2 );
-        }
     }
 
     /* --- Checkout Prefill --- */
