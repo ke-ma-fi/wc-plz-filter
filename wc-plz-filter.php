@@ -68,8 +68,9 @@ final class WC_PLZ_Filter {
         add_action( 'wp_footer',          [ $this, 'render_popup' ] );
 
 
-        add_action( 'woocommerce_product_query',      [ $this, 'filter_products' ] );
-        add_filter( 'woocommerce_checkout_get_value',  [ $this, 'prefill_checkout' ], 10, 2 );
+        add_action( 'woocommerce_product_query', [ $this, 'filter_products' ] );
+        add_filter( 'the_posts',               [ $this, 'filter_posts_global' ], 10, 2 );
+        add_filter( 'woocommerce_checkout_get_value', [ $this, 'prefill_checkout' ], 10, 2 );
 
         foreach ( [ 'wp_ajax_', 'wp_ajax_nopriv_' ] as $p ) {
             add_action( $p . 'wc_plz_check', [ $this, 'ajax_check' ] );
@@ -297,6 +298,63 @@ final class WC_PLZ_Filter {
                 return $sql;
             }, 10, 2 );
         }
+    }
+
+    /* --- Globaler PHP-Fallback-Filter (fängt alle Queries auf WC-Seiten) --- */
+
+    public function filter_posts_global( array $posts, \WP_Query $query ): array {
+        if ( is_admin() || empty( $posts ) ) {
+            return $posts;
+        }
+
+        $state = $this->get_state();
+        if ( empty( $state['mode'] ) || $state['mode'] !== 'post' ) {
+            return $posts;
+        }
+
+        // Nur wenn die Query Produkte enthält
+        $has_product = false;
+        foreach ( $posts as $post ) {
+            if ( isset( $post->post_type ) && $post->post_type === 'product' ) {
+                $has_product = true;
+                break;
+            }
+        }
+        if ( ! $has_product ) {
+            return $posts;
+        }
+
+        $settings   = $this->get_settings();
+        $excluded_ids = array_filter( array_map( 'intval', (array) $settings['excluded_classes'] ) );
+        if ( empty( $excluded_ids ) ) {
+            return $posts;
+        }
+
+        $excluded_slugs = get_terms( [
+            'taxonomy'   => 'product_shipping_class',
+            'include'    => $excluded_ids,
+            'fields'     => 'slugs',
+            'hide_empty' => false,
+        ] );
+        if ( empty( $excluded_slugs ) || is_wp_error( $excluded_slugs ) ) {
+            return $posts;
+        }
+
+        return array_values( array_filter( $posts, function ( \WP_Post $post ) use ( $excluded_slugs ) {
+            if ( $post->post_type !== 'product' ) {
+                return true;
+            }
+            $terms = get_the_terms( $post->ID, 'product_shipping_class' );
+            if ( empty( $terms ) || is_wp_error( $terms ) ) {
+                return true;
+            }
+            foreach ( $terms as $term ) {
+                if ( in_array( $term->slug, $excluded_slugs, true ) ) {
+                    return false;
+                }
+            }
+            return true;
+        } ) );
     }
 
     /* --- Checkout Prefill --- */
