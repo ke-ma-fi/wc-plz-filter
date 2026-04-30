@@ -389,15 +389,13 @@ final class WC_PLZ_Filter {
         }
 
         if ( ! empty( $removed ) ) {
-            $msg = sprintf(
-                'Folgende Produkte sind im Postversand nicht verfügbar und wurden entfernt: %s.',
-                implode( ', ', array_map( 'esc_html', $removed ) )
+            wc_add_notice(
+                sprintf(
+                    'Folgende Produkte sind im Postversand nicht verfügbar und wurden entfernt: %s.',
+                    implode( ', ', array_map( 'esc_html', $removed ) )
+                ),
+                'notice'
             );
-            if ( is_checkout() ) {
-                WC()->session->set( 'wc_plz_removed_notice', $msg );
-            } else {
-                wc_add_notice( $msg, 'notice' );
-            }
         }
     }
 
@@ -429,36 +427,30 @@ final class WC_PLZ_Filter {
         }
 
         if ( ! is_checkout() ) {
-            $settings = $this->get_settings();
-            $min      = (int) ( $state['mode'] === 'local' ? $settings['min_order_local'] : $settings['min_order_post'] );
-            if ( $min > 0 ) {
-                $subtotal = (float) WC()->cart->get_subtotal();
-                if ( $subtotal < $min ) {
-                    $label = $state['mode'] === 'local' ? 'Lokallieferung' : 'Postversand';
-                    wc_add_notice(
-                        sprintf(
-                            'Für %s gilt ein Mindestbestellwert von %s. Es fehlen noch %s.',
-                            $label,
-                            wc_price( $min ),
-                            wc_price( $min - $subtotal )
-                        ),
-                        'notice'
-                    );
-                }
+        $settings = $this->get_settings();
+        $min      = (int) ( $state['mode'] === 'local' ? $settings['min_order_local'] : $settings['min_order_post'] );
+        if ( $min > 0 ) {
+            $subtotal = (float) WC()->cart->get_subtotal();
+            if ( $subtotal < $min ) {
+                $label = $state['mode'] === 'local' ? 'Lokallieferung' : 'Postversand';
+                wc_add_notice(
+                    sprintf(
+                        'Für %s gilt ein Mindestbestellwert von %s. Es fehlen noch %s.',
+                        $label,
+                        wc_price( $min ),
+                        wc_price( $min - $subtotal )
+                    ),
+                    'notice'
+                );
             }
         }
+        } // end ! is_checkout()
     }
 
     /**
      * Single-Product-Page: blockiert Add-to-Cart wenn Produkt ausgeschlossen ist.
      */
     public function checkout_min_order_notice(): void {
-        $removed_msg = WC()->session ? (string) WC()->session->get( 'wc_plz_removed_notice', '' ) : '';
-        if ( $removed_msg ) {
-            wc_print_notice( $removed_msg, 'notice' );
-            WC()->session->set( 'wc_plz_removed_notice', '' );
-        }
-
         $state = $this->get_state();
         if ( ! in_array( $state['mode'], [ 'local', 'post' ], true ) ) {
             return;
