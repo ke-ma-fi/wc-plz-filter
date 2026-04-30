@@ -3,7 +3,7 @@
  * Plugin Name:  WC PLZ-Filter
  * Plugin URI:   https://fischer.digitale-theke.com
  * Description:  PLZ-Popup mit drei Modi (Abholung, Lokale Lieferung, Postversand). Filtert Produkte dynamisch nach WooCommerce-Versandklassen und füllt den Checkout vor.
- * Version:      2.7.7
+ * Version:      2.7.8
  * Author:       Metzgerei Fischer
  * License:      Proprietary
  * License URI:  https://fischer.digitale-theke.com
@@ -23,7 +23,7 @@ defined( 'ABSPATH' ) || exit;
 
 final class WC_PLZ_Filter {
 
-    const VERSION         = '2.7.7';
+    const VERSION         = '2.7.8';
     const COOKIE          = 'wc_delivery_mode';
     const OPT             = 'wc_plz_filter_v2';
     const CACHE           = 'wc_plz_local_codes';
@@ -89,6 +89,7 @@ final class WC_PLZ_Filter {
         add_filter( 'woocommerce_checkout_get_value', [ $this, 'prefill_checkout' ], 10, 2 );
 
         // fgf-Hardening: Server-side enforcement (cookie ist client-controlled)
+        add_action( 'woocommerce_cart_loaded_from_session', [ $this, 'remove_excluded_cart_items' ] );
         add_action( 'woocommerce_check_cart_items',        [ $this, 'validate_cart_items' ] );
         add_action( 'woocommerce_after_checkout_validation', [ $this, 'validate_checkout_plz' ], 10, 2 );
         add_action( 'template_redirect',                    [ $this, 'redirect_excluded_single' ] );
@@ -365,6 +366,38 @@ final class WC_PLZ_Filter {
     /**
      * Cart-Validation: Postversand-Modus + Produkt mit ausgeschlossener Klasse → Notice.
      */
+    public function remove_excluded_cart_items(): void {
+        $state = $this->get_state();
+        if ( $state['mode'] !== 'post' ) {
+            return;
+        }
+
+        $hidden_ids = $this->get_hidden_product_ids();
+        if ( empty( $hidden_ids ) ) {
+            return;
+        }
+
+        $hidden_lookup = array_flip( $hidden_ids );
+        $removed       = [];
+
+        foreach ( WC()->cart->get_cart() as $key => $item ) {
+            if ( isset( $hidden_lookup[ (int) $item['product_id'] ] ) ) {
+                $removed[] = $item['data']->get_name();
+                WC()->cart->remove_cart_item( $key );
+            }
+        }
+
+        if ( ! empty( $removed ) ) {
+            wc_add_notice(
+                sprintf(
+                    'Folgende Produkte sind im Postversand nicht verfügbar und wurden entfernt: %s.',
+                    implode( ', ', array_map( 'esc_html', $removed ) )
+                ),
+                'notice'
+            );
+        }
+    }
+
     public function validate_cart_items(): void {
         $state = $this->get_state();
         if ( $state['mode'] !== 'post' ) {
