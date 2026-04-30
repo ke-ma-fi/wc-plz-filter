@@ -94,7 +94,6 @@ final class WC_PLZ_Filter {
         add_action( 'woocommerce_after_checkout_validation', [ $this, 'validate_checkout_plz' ], 10, 2 );
         add_action( 'template_redirect',                    [ $this, 'redirect_excluded_single' ] );
         add_action( 'wp_footer',                            [ $this, 'maybe_show_blocked_alert' ] );
-        add_filter( 'woocommerce_is_purchasable',           [ $this, 'block_excluded_purchasable' ], 10, 2 );
 
         // FOUC-Schutz: Inline-Script im <head> versteckt synchron via localStorage-Cache
         add_action( 'wp_head', [ $this, 'print_head_hide_script' ], 1 );
@@ -429,21 +428,6 @@ final class WC_PLZ_Filter {
     /**
      * Single-Product-Page: blockiert Add-to-Cart wenn Produkt ausgeschlossen ist.
      */
-    public function block_excluded_purchasable( $purchasable, $product ): bool {
-        if ( ! $purchasable ) {
-            return $purchasable;
-        }
-        $state = $this->get_state();
-        if ( $state['mode'] !== 'post' ) {
-            return $purchasable;
-        }
-        $hidden_ids = $this->get_hidden_product_ids();
-        if ( empty( $hidden_ids ) ) {
-            return $purchasable;
-        }
-        return ! in_array( (int) $product->get_id(), $hidden_ids, true );
-    }
-
     /**
      * Checkout-Validation: PLZ muss zum Mode passen.
      */
