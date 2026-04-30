@@ -42,7 +42,22 @@ final class WC_PLZ_Filter {
         add_action( 'plugins_loaded', [ $this, 'init' ] );
     }
 
+    private function maybe_bust_rocket_cache(): void {
+        if ( get_option( 'wc_plz_rocket_busted', '' ) === self::VERSION ) {
+            return;
+        }
+        update_option( 'wc_plz_rocket_busted', self::VERSION, false );
+        if ( function_exists( 'rocket_clean_minify' ) ) {
+            rocket_clean_minify();
+        }
+        if ( function_exists( 'rocket_clean_domain' ) ) {
+            rocket_clean_domain();
+        }
+    }
+
     public function init(): void {
+        $this->maybe_bust_rocket_cache();
+
         if ( ! class_exists( 'WooCommerce' ) ) {
             add_action( 'admin_notices', function() {
                 echo '<div class="notice notice-error"><p><strong>WC PLZ-Filter:</strong> WooCommerce muss aktiv sein.</p></div>';
