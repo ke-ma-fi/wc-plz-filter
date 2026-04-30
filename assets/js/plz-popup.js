@@ -442,6 +442,19 @@
     applyHiddenIds();
     fetchHiddenIds();
 
+    // Client-side redirect für gecachte Produktseiten (WP Rocket umgehung)
+    if (state.mode === "post" && document.body.classList.contains("single-product")) {
+      var hiddenSlugs = [];
+      try { hiddenSlugs = JSON.parse(localStorage.getItem("wc_plz_hidden_slugs") || "[]"); } catch(e) {}
+      if (hiddenSlugs.length) {
+        var pageSlug = location.pathname.replace(/\/$/, "").split("/").pop();
+        if (hiddenSlugs.indexOf(pageSlug) !== -1) {
+          var back = document.referrer || "/";
+          location.replace(back + (back.indexOf("?") >= 0 ? "&" : "?") + "plz_blocked=1");
+        }
+      }
+    }
+
     prefillPostcode();
 
     // Submit button
