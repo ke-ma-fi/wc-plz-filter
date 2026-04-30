@@ -574,6 +574,7 @@ final class WC_PLZ_Filter {
             'ajaxUrl'              => admin_url( 'admin-ajax.php' ),
             'nonce'                => wp_create_nonce( 'wc_plz_nonce' ),
             'nonceUrl'             => rest_url( 'wc-plz/v1/nonce' ),
+            'version'              => self::VERSION,
             'cookieName'           => self::COOKIE,
             'cookieDays'           => (int) $settings['cookie_days'],
             'isCheckout'           => is_checkout() ? 1 : 0,

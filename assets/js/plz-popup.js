@@ -299,7 +299,7 @@
 
   function fetchHiddenIds() {
     var xhr = new XMLHttpRequest();
-    var url = D.ajaxUrl + "?action=wc_plz_hidden_ids";
+    var url = D.ajaxUrl + "?action=wc_plz_hidden_ids&v=" + (D.version || "0");
     xhr.open("GET", url, true);
     xhr.onreadystatechange = function () {
       if (xhr.readyState !== 4) return;
