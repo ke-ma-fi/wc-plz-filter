@@ -92,6 +92,7 @@ final class WC_PLZ_Filter {
         add_action( 'woocommerce_check_cart_items',        [ $this, 'validate_cart_items' ] );
         add_action( 'woocommerce_after_checkout_validation', [ $this, 'validate_checkout_plz' ], 10, 2 );
         add_action( 'template_redirect',                    [ $this, 'redirect_excluded_single' ] );
+        add_action( 'wp_footer',                            [ $this, 'maybe_show_blocked_alert' ] );
         add_filter( 'woocommerce_is_purchasable',           [ $this, 'block_excluded_purchasable' ], 10, 2 );
 
         // FOUC-Schutz: Inline-Script im <head> versteckt synchron via localStorage-Cache
@@ -449,9 +450,16 @@ final class WC_PLZ_Filter {
             return;
         }
 
-        wc_add_notice( 'Dieses Produkt ist im Postversand nicht verfügbar. Bitte wählen Sie eine andere Lieferart oder ändern Sie Ihre PLZ.', 'notice' );
-        wp_safe_redirect( wp_get_referer() ?: home_url( '/' ) );
+        $back = add_query_arg( 'plz_blocked', '1', wp_get_referer() ?: home_url( '/' ) );
+        wp_safe_redirect( $back );
         exit;
+    }
+
+    public function maybe_show_blocked_alert(): void {
+        if ( empty( $_GET['plz_blocked'] ) ) {
+            return;
+        }
+        echo '<script>alert(' . wp_json_encode( __( 'Dieses Produkt ist im Postversand nicht verfügbar. Bitte wählen Sie eine andere Lieferart oder ändern Sie Ihre PLZ.', 'wc-plz-filter' ) ) . ');</script>';
     }
 
     /* --- Checkout Prefill --- */
