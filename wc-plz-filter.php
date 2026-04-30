@@ -3,7 +3,7 @@
  * Plugin Name:  WC PLZ-Filter
  * Plugin URI:   https://fischer.digitale-theke.com
  * Description:  PLZ-Popup mit drei Modi (Abholung, Lokale Lieferung, Postversand). Filtert Produkte dynamisch nach WooCommerce-Versandklassen und füllt den Checkout vor.
- * Version:      2.7.5
+ * Version:      2.7.6
  * Author:       Metzgerei Fischer
  * License:      Proprietary
  * License URI:  https://fischer.digitale-theke.com
@@ -23,7 +23,7 @@ defined( 'ABSPATH' ) || exit;
 
 final class WC_PLZ_Filter {
 
-    const VERSION         = '2.7.5';
+    const VERSION         = '2.7.6';
     const COOKIE          = 'wc_delivery_mode';
     const OPT             = 'wc_plz_filter_v2';
     const CACHE           = 'wc_plz_local_codes';
@@ -279,6 +279,17 @@ final class WC_PLZ_Filter {
         return $hidden_ids;
     }
 
+    private function get_hidden_product_slugs(): array {
+        $ids = $this->get_hidden_product_ids();
+        if ( empty( $ids ) ) {
+            return [];
+        }
+        return array_values( array_filter( array_map(
+            fn( int $id ) => (string) get_post_field( 'post_name', $id ),
+            $ids
+        ) ) );
+    }
+
     /**
      * Bump der Hidden-IDs-Version → alle existierenden Transients (mit alter Version
      * im Key) werden ignoriert und verfallen via TTL. Kein wp_options-LIKE-Scan.
@@ -474,7 +485,8 @@ final class WC_PLZ_Filter {
             'message'    => $local
                 ? 'Wir liefern in Ihre PLZ ' . $plz . '! Alle Produkte verfügbar.'
                 : $settings['post_msg'],
-            'hidden_ids' => ( $mode === 'post' ) ? $this->get_hidden_product_ids() : [],
+            'hidden_ids'   => ( $mode === 'post' ) ? $this->get_hidden_product_ids() : [],
+            'hidden_slugs' => ( $mode === 'post' ) ? $this->get_hidden_product_slugs() : [],
         ] );
     }
 
@@ -491,7 +503,8 @@ final class WC_PLZ_Filter {
         header( 'Cache-Control: public, max-age=300' );
 
         wp_send_json_success( [
-            'ids' => $this->get_hidden_product_ids(),
+            'ids'   => $this->get_hidden_product_ids(),
+            'slugs' => $this->get_hidden_product_slugs(),
         ] );
     }
 
@@ -548,7 +561,8 @@ final class WC_PLZ_Filter {
         wp_send_json_success( [ 
             'mode' => $mode, 
             'plz'  => $plz,
-            'hidden_ids' => ( $mode === 'post' ) ? $this->get_hidden_product_ids() : [],
+            'hidden_ids'   => ( $mode === 'post' ) ? $this->get_hidden_product_ids() : [],
+            'hidden_slugs' => ( $mode === 'post' ) ? $this->get_hidden_product_slugs() : [],
         ] );
     }
 

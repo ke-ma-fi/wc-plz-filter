@@ -212,6 +212,7 @@
       function (res) {
         if (res && res.success && res.data && res.data.hidden_ids) {
           localStorage.setItem("wc_plz_hidden_ids", JSON.stringify(res.data.hidden_ids));
+          localStorage.setItem("wc_plz_hidden_slugs", JSON.stringify(res.data.hidden_slugs || []));
         }
         if (callback) callback(res);
       },
@@ -308,6 +309,7 @@
           var res = JSON.parse(xhr.responseText);
           if (res.success && res.data && res.data.ids) {
             localStorage.setItem("wc_plz_hidden_ids", JSON.stringify(res.data.ids));
+            localStorage.setItem("wc_plz_hidden_slugs", JSON.stringify(res.data.slugs || []));
             applyHiddenIds();
           }
         } catch (e) {}
@@ -316,31 +318,49 @@
     xhr.send();
   }
 
+  function slugFromHref(href) {
+    return (href || "").trim().split("?")[0].split("#")[0].replace(/\/+$/, "").split("/").pop();
+  }
+
   function applyHiddenIds() {
     var styleEl = document.getElementById("wc-plz-hide-style");
     if (state.mode === "post") {
       var ids = [];
+      var slugs = [];
       try {
-        ids = JSON.parse(localStorage.getItem("wc_plz_hidden_ids") || "[]");
+        ids   = JSON.parse(localStorage.getItem("wc_plz_hidden_ids")   || "[]");
+        slugs = JSON.parse(localStorage.getItem("wc_plz_hidden_slugs") || "[]");
       } catch(e) {}
-      
+
       if (!ids.length) return;
-      
+
       // .pdb{ID} = fgf-Custom-Grid; .products .post-{ID} = WC-Standard-Loops
-      // (Cross-Sells / Up-Sells / Related / Shop). Niemals body.post-{ID} oder
-      // article.post-{ID} matchen, sonst verschwindet die Single-Product-Page.
       var sel = ids.map(function(id){ return ".pdb" + id + ", .products .post-" + id; }).join(",");
-      if (!sel) return;
-      
       if (!styleEl) {
         styleEl = document.createElement("style");
         styleEl.id = "wc-plz-hide-style";
         (document.head || document.documentElement).appendChild(styleEl);
       }
       styleEl.textContent = sel + "{display:none!important}";
+
+      // JetWooBuilder Carousel: kein post-{ID} im Markup → href-Slug-Matching
+      if (slugs.length) {
+        var slugSet = {};
+        for (var i = 0; i < slugs.length; i++) slugSet[slugs[i]] = true;
+        var boxes = document.querySelectorAll(".jet-woo-products__inner-box");
+        for (var j = 0; j < boxes.length; j++) {
+          var link = boxes[j].querySelector("a");
+          if (link && slugSet[slugFromHref(link.getAttribute("href"))]) {
+            boxes[j].style.display = "none";
+          }
+        }
+      }
     } else {
-      if (styleEl) {
-        styleEl.textContent = "";
+      if (styleEl) styleEl.textContent = "";
+      // Carousel-Items wieder einblenden falls Modus wechselt
+      var boxes = document.querySelectorAll(".jet-woo-products__inner-box");
+      for (var k = 0; k < boxes.length; k++) {
+        boxes[k].style.display = "";
       }
     }
   }
@@ -401,6 +421,7 @@
         var r = res.data;
         if (r.hidden_ids) {
           localStorage.setItem("wc_plz_hidden_ids", JSON.stringify(r.hidden_ids));
+          localStorage.setItem("wc_plz_hidden_slugs", JSON.stringify(r.hidden_slugs || []));
         }
         setFeedback(r.message, r.is_local ? "ok" : "warn");
 
@@ -521,6 +542,7 @@
             function (res) {
               if (res && res.success && res.data && res.data.hidden_ids) {
                 localStorage.setItem("wc_plz_hidden_ids", JSON.stringify(res.data.hidden_ids));
+                localStorage.setItem("wc_plz_hidden_slugs", JSON.stringify(res.data.hidden_slugs || []));
                 applyHiddenIds();
               }
             }
