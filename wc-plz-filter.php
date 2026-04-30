@@ -3,7 +3,7 @@
  * Plugin Name:  WC PLZ-Filter
  * Plugin URI:   https://fischer.digitale-theke.com
  * Description:  PLZ-Popup mit drei Modi (Abholung, Lokale Lieferung, Postversand). Filtert Produkte dynamisch nach WooCommerce-Versandklassen und füllt den Checkout vor.
- * Version:      2.7.8
+ * Version:      2.7.9
  * Author:       Metzgerei Fischer
  * License:      Proprietary
  * License URI:  https://fischer.digitale-theke.com
@@ -23,7 +23,7 @@ defined( 'ABSPATH' ) || exit;
 
 final class WC_PLZ_Filter {
 
-    const VERSION         = '2.7.8';
+    const VERSION         = '2.7.9';
     const COOKIE          = 'wc_delivery_mode';
     const OPT             = 'wc_plz_filter_v2';
     const CACHE           = 'wc_plz_local_codes';
@@ -89,9 +89,9 @@ final class WC_PLZ_Filter {
         add_filter( 'woocommerce_checkout_get_value', [ $this, 'prefill_checkout' ], 10, 2 );
 
         // fgf-Hardening: Server-side enforcement (cookie ist client-controlled)
-        add_action( 'woocommerce_cart_loaded_from_session', [ $this, 'remove_excluded_cart_items' ] );
-        add_action( 'woocommerce_check_cart_items',        [ $this, 'validate_cart_items' ] );
-        add_action( 'woocommerce_after_checkout_validation', [ $this, 'validate_checkout_plz' ], 10, 2 );
+        add_action( 'woocommerce_cart_loaded_from_session',  [ $this, 'remove_excluded_cart_items' ] );
+        add_action( 'woocommerce_check_cart_items',          [ $this, 'validate_cart_items' ] );
+        add_action( 'woocommerce_before_checkout_form',      [ $this, 'checkout_min_order_notice' ] );
         add_action( 'template_redirect',                    [ $this, 'redirect_excluded_single' ] );
         add_action( 'wp_footer',                            [ $this, 'maybe_show_blocked_alert' ] );
 
@@ -150,6 +150,8 @@ final class WC_PLZ_Filter {
             'popup_title'            => 'Wie möchten Sie bestellen?',
             'popup_text'             => 'Geben Sie Ihre Postleitzahl ein, um zu prüfen ob wir zu Ihnen liefern, oder wählen Sie Abholung in unserer Filiale.',
             'post_msg'               => 'Für Ihre PLZ ist Postversand verfügbar. Einige Frischeprodukte sind bei Versand nicht erhältlich.',
+            'min_order_local'        => 30,
+            'min_order_post'         => 30,
             'popup_color'            => '#cc0000',
             'badge_position'         => 'bottom-right',
             'badge_rotate'           => 0,
@@ -423,35 +425,51 @@ final class WC_PLZ_Filter {
                 );
             }
         }
+
+        $settings = $this->get_settings();
+        $min      = (int) ( $state['mode'] === 'local' ? $settings['min_order_local'] : $settings['min_order_post'] );
+        if ( $min > 0 ) {
+            $subtotal = (float) WC()->cart->get_subtotal();
+            if ( $subtotal < $min ) {
+                $label = $state['mode'] === 'local' ? 'Lokallieferung' : 'Postversand';
+                wc_add_notice(
+                    sprintf(
+                        'Für %s gilt ein Mindestbestellwert von %s. Es fehlen noch %s.',
+                        $label,
+                        wc_price( $min ),
+                        wc_price( $min - $subtotal )
+                    ),
+                    'notice'
+                );
+            }
+        }
     }
 
     /**
      * Single-Product-Page: blockiert Add-to-Cart wenn Produkt ausgeschlossen ist.
      */
-    /**
-     * Checkout-Validation: PLZ muss zum Mode passen.
-     */
-    public function validate_checkout_plz( $data, $errors ): void {
+    public function checkout_min_order_notice(): void {
         $state = $this->get_state();
-        if ( empty( $state['mode'] ) || ! in_array( $state['mode'], [ 'local', 'post' ], true ) ) {
+        if ( ! in_array( $state['mode'], [ 'local', 'post' ], true ) ) {
             return;
         }
-        
-        $use_shipping = ! empty( $data['ship_to_different_address'] );
-        $plz = $use_shipping
-            ? ( $data['shipping_postcode'] ?? '' )
-            : ( $data['billing_postcode']  ?? '' );
-
-        if ( empty( $plz ) ) {
+        $settings = $this->get_settings();
+        $min      = (int) ( $state['mode'] === 'local' ? $settings['min_order_local'] : $settings['min_order_post'] );
+        if ( $min <= 0 ) {
             return;
         }
-
-        $is_local = $this->is_local( $plz );
-
-        if ( $state['mode'] === 'local' && ! $is_local ) {
-            $errors->add( 'validation', 'Sie haben die Lieferart "Lokale Lieferung" gewählt, aber Ihre Postleitzahl liegt nicht in unserem lokalen Liefergebiet. Bitte wählen Sie Postversand im Footer-Popup.' );
-        } elseif ( $state['mode'] === 'post' && $is_local ) {
-            $errors->add( 'validation', 'Sie haben die Lieferart "Postversand" gewählt, aber Ihre Postleitzahl liegt in unserem lokalen Liefergebiet. Bitte wählen Sie Lokale Lieferung im Footer-Popup.' );
+        $subtotal = (float) WC()->cart->get_subtotal();
+        if ( $subtotal < $min ) {
+            $label = $state['mode'] === 'local' ? 'Lokallieferung' : 'Postversand';
+            wc_print_notice(
+                sprintf(
+                    'Für %s gilt ein Mindestbestellwert von %s. Es fehlen noch %s.',
+                    $label,
+                    wc_price( $min ),
+                    wc_price( $min - $subtotal )
+                ),
+                'notice'
+            );
         }
     }
 
@@ -797,6 +815,8 @@ final class WC_PLZ_Filter {
             'badge_tooltip_local'    => sanitize_textarea_field( $input['badge_tooltip_local'] ?? '' ),
             'badge_tooltip_post'     => sanitize_textarea_field( $input['badge_tooltip_post'] ?? '' ),
             'badge_tooltip_skipped'  => sanitize_textarea_field( $input['badge_tooltip_skipped'] ?? '' ),
+            'min_order_local'        => max( 0, (int) ( $input['min_order_local'] ?? 30 ) ),
+            'min_order_post'         => max( 0, (int) ( $input['min_order_post'] ?? 30 ) ),
         ];
     }
 
@@ -850,6 +870,20 @@ final class WC_PLZ_Filter {
                     <tr>
                         <th>Cookie-Laufzeit (Tage)</th>
                         <td><input type="number" name="<?php echo esc_attr( $opt ); ?>[cookie_days]" value="<?php echo esc_attr( $settings['cookie_days'] ); ?>" min="1" max="365" class="small-text" /></td>
+                    </tr>
+                    <tr>
+                        <th>Mindestbestellwert</th>
+                        <td>
+                            <label style="display:block;margin-bottom:6px;">
+                                Lokallieferung:
+                                <input type="number" name="<?php echo esc_attr( $opt ); ?>[min_order_local]" value="<?php echo esc_attr( $settings['min_order_local'] ); ?>" min="0" step="1" class="small-text" /> €
+                            </label>
+                            <label style="display:block;">
+                                Postversand:
+                                <input type="number" name="<?php echo esc_attr( $opt ); ?>[min_order_post]" value="<?php echo esc_attr( $settings['min_order_post'] ); ?>" min="0" step="1" class="small-text" /> €
+                            </label>
+                            <p class="description">0 = kein Mindestbestellwert. Wird im Warenkorb und beim Checkout geprüft.</p>
+                        </td>
                     </tr>
                     <tr>
                         <th>Popup-Titel</th>
