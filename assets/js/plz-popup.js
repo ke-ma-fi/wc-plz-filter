@@ -308,6 +308,9 @@
           var res = JSON.parse(xhr.responseText);
           if (res.success && res.data && res.data.ids) {
             localStorage.setItem("wc_plz_hidden_ids", JSON.stringify(res.data.ids));
+            if (Array.isArray(res.data.slugs)) {
+              localStorage.setItem("wc_plz_hidden_slugs", JSON.stringify(res.data.slugs));
+            }
             applyHiddenIds();
           }
         } catch (e) {}
@@ -320,24 +323,30 @@
     var styleEl = document.getElementById("wc-plz-hide-style");
     if (state.mode === "post") {
       var ids = [];
-      try {
-        ids = JSON.parse(localStorage.getItem("wc_plz_hidden_ids") || "[]");
-      } catch(e) {}
-      
-      if (!ids.length) return;
-      
-      // .pdb{ID} = fgf-Custom-Grid; .products .post-{ID} = WC-Standard-Loops
-      // (Cross-Sells / Up-Sells / Related / Shop). Niemals body.post-{ID} oder
-      // article.post-{ID} matchen, sonst verschwindet die Single-Product-Page.
-      var sel = ids.map(function(id){ return ".pdb" + id + ", .products .post-" + id; }).join(",");
-      if (!sel) return;
-      
-      if (!styleEl) {
-        styleEl = document.createElement("style");
-        styleEl.id = "wc-plz-hide-style";
-        (document.head || document.documentElement).appendChild(styleEl);
+      try { ids = JSON.parse(localStorage.getItem("wc_plz_hidden_ids") || "[]"); } catch(e) {}
+      var slugs = [];
+      try { slugs = JSON.parse(localStorage.getItem("wc_plz_hidden_slugs") || "[]"); } catch(e) {}
+
+      var sel = "";
+      if (ids.length) {
+        // .pdb{ID} = fgf-Custom-Grid; .products .post-{ID} = WC-Standard-Loops
+        // (Cross-Sells / Up-Sells / Related / Shop). Niemals body.post-{ID} oder
+        // article.post-{ID} matchen, sonst verschwindet die Single-Product-Page.
+        sel = ids.map(function(id){ return ".pdb" + id + ", .products .post-" + id; }).join(",");
       }
-      styleEl.textContent = sel + "{display:none!important}";
+      if (slugs.length) {
+        var cSel = slugs.map(function(s){ return '.jet-woo-products__inner-box:has(a[href*="/' + s + '/"])'; }).join(",");
+        sel = sel ? sel + "," + cSel : cSel;
+      }
+
+      if (sel) {
+        if (!styleEl) {
+          styleEl = document.createElement("style");
+          styleEl.id = "wc-plz-hide-style";
+          (document.head || document.documentElement).appendChild(styleEl);
+        }
+        styleEl.textContent = sel + "{display:none!important}";
+      }
     } else {
       if (styleEl) {
         styleEl.textContent = "";

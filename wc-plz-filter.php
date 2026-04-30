@@ -3,7 +3,7 @@
  * Plugin Name:  WC PLZ-Filter
  * Plugin URI:   https://fischer.digitale-theke.com
  * Description:  PLZ-Popup mit drei Modi (Abholung, Lokale Lieferung, Postversand). Filtert Produkte dynamisch nach WooCommerce-Versandklassen und füllt den Checkout vor.
- * Version:      2.7.6
+ * Version:      2.7.7
  * Author:       Metzgerei Fischer
  * License:      Proprietary
  * License URI:  https://fischer.digitale-theke.com
@@ -23,7 +23,7 @@ defined( 'ABSPATH' ) || exit;
 
 final class WC_PLZ_Filter {
 
-    const VERSION         = '2.7.6';
+    const VERSION         = '2.7.7';
     const COOKIE          = 'wc_delivery_mode';
     const OPT             = 'wc_plz_filter_v2';
     const CACHE           = 'wc_plz_local_codes';
@@ -254,6 +254,13 @@ final class WC_PLZ_Filter {
      * Liefert alle Produkt-IDs deren Versandklasse ausgeschlossen ist.
      * Transient-cached (12h); invalidiert bei Settings-Save oder Term-Zuweisung.
      */
+    private function get_hidden_product_slugs(): array {
+        return array_values( array_filter( array_map( function( int $id ): ?string {
+            $slug = get_post_field( 'post_name', $id );
+            return ( is_string( $slug ) && $slug !== '' ) ? $slug : null;
+        }, $this->get_hidden_product_ids() ) ) );
+    }
+
     public function get_hidden_product_ids(): array {
         $settings     = $this->get_settings();
         $excluded_ids = array_filter( array_map( 'intval', (array) $settings['excluded_classes'] ) );
@@ -512,7 +519,8 @@ final class WC_PLZ_Filter {
         header( 'Cache-Control: public, max-age=300' );
 
         wp_send_json_success( [
-            'ids' => $this->get_hidden_product_ids(),
+            'ids'   => $this->get_hidden_product_ids(),
+            'slugs' => $this->get_hidden_product_slugs(),
         ] );
     }
 
@@ -633,11 +641,16 @@ final class WC_PLZ_Filter {
                 var raw = decodeURIComponent(m[1]);
                 if (raw.indexOf('post:') !== 0) return;
                 var ids = JSON.parse(localStorage.getItem('wc_plz_hidden_ids') || '[]');
-                if (!ids.length) return;
+                var slugs = JSON.parse(localStorage.getItem('wc_plz_hidden_slugs') || '[]');
+                if (!ids.length && !slugs.length) return;
                 // .pdb{ID} = fgf-Custom-Grid; .products .post-{ID} = WC-Standard-Loops
                 // (Cross-Sells / Up-Sells / Related / Shop). Niemals body.post-{ID} oder
                 // article.post-{ID} matchen, sonst verschwindet die Single-Product-Page.
                 var sel = ids.map(function(id){ return '.pdb' + id + ', .products .post-' + id; }).join(',');
+                if (slugs.length) {
+                    var cSel = slugs.map(function(s){ return '.jet-woo-products__inner-box:has(a[href*="/' + s + '/"])'; }).join(',');
+                    sel = sel ? sel + ',' + cSel : cSel;
+                }
                 if (!sel) return;
                 var s = document.createElement('style');
                 s.id = 'wc-plz-hide-style';
