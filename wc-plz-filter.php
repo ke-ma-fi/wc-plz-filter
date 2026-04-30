@@ -82,9 +82,6 @@ final class WC_PLZ_Filter {
         // FOUC-Schutz: Inline-Script im <head> versteckt synchron via localStorage-Cache
         add_action( 'wp_head', [ $this, 'print_head_hide_script' ], 1 );
 
-        // JetWooBuilder Carousel: Produkt-ID als data-Attribut in jeden Slide injizieren
-        add_action( 'woocommerce_before_shop_loop_item', [ $this, 'output_carousel_id_marker' ] );
-
         // Cache-Invalidation für Hidden-IDs (versioniertes Cache-Key-Schema, kein wp_options-LIKE-Scan)
         add_action( 'edited_product_shipping_class',  [ $this, 'invalidate_hidden_ids_cache' ] );
         add_action( 'created_product_shipping_class', [ $this, 'invalidate_hidden_ids_cache' ] );
@@ -595,17 +592,6 @@ final class WC_PLZ_Filter {
         return str_replace( '<script ', '<script data-nowprocket ', $tag );
     }
 
-    public function output_carousel_id_marker(): void {
-        if ( is_admin() ) {
-            return;
-        }
-        $id = get_the_ID();
-        if ( ! $id ) {
-            return;
-        }
-        echo '<span data-wc-plz-id="' . (int) $id . '" hidden></span>';
-    }
-
     /**
      * Inline-Script im <head>: liest Cookie + localStorage synchron und injiziert
      * vor Body-Parse einen <style>-Block der ausgeschlossene Produkte versteckt.
@@ -629,7 +615,7 @@ final class WC_PLZ_Filter {
                 // .pdb{ID} = fgf-Custom-Grid; .products .post-{ID} = WC-Standard-Loops
                 // (Cross-Sells / Up-Sells / Related / Shop). Niemals body.post-{ID} oder
                 // article.post-{ID} matchen, sonst verschwindet die Single-Product-Page.
-                var sel = ids.map(function(id){ return '.pdb' + id + ', .products .post-' + id + ', .jet-woo-products__inner-box:has([data-wc-plz-id="' + id + '"])'; }).join(',');
+                var sel = ids.map(function(id){ return '.pdb' + id + ', .products .post-' + id; }).join(',');
                 if (!sel) return;
                 var s = document.createElement('style');
                 s.id = 'wc-plz-hide-style';

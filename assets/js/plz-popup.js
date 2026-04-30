@@ -327,8 +327,9 @@
       if (!ids.length) return;
       
       // .pdb{ID} = fgf-Custom-Grid; .products .post-{ID} = WC-Standard-Loops
-      // :has([data-wc-plz-id]) = JetWooBuilder Carousel (kein post-{ID} im Markup)
-      var sel = ids.map(function(id){ return ".pdb" + id + ", .products .post-" + id + ', .jet-woo-products__inner-box:has([data-wc-plz-id="' + id + '"])'; }).join(",");
+      // (Cross-Sells / Up-Sells / Related / Shop). Niemals body.post-{ID} oder
+      // article.post-{ID} matchen, sonst verschwindet die Single-Product-Page.
+      var sel = ids.map(function(id){ return ".pdb" + id + ", .products .post-" + id; }).join(",");
       if (!sel) return;
       
       if (!styleEl) {
