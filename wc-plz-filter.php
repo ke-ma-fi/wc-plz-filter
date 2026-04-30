@@ -3,7 +3,7 @@
  * Plugin Name:  WC PLZ-Filter
  * Plugin URI:   https://fischer.digitale-theke.com
  * Description:  PLZ-Popup mit drei Modi (Abholung, Lokale Lieferung, Postversand). Filtert Produkte dynamisch nach WooCommerce-Versandklassen und füllt den Checkout vor.
- * Version:      2.7.5
+ * Version:      2.7.6
  * Author:       Metzgerei Fischer
  * License:      Proprietary
  * License URI:  https://fischer.digitale-theke.com
@@ -23,7 +23,7 @@ defined( 'ABSPATH' ) || exit;
 
 final class WC_PLZ_Filter {
 
-    const VERSION         = '2.7.5';
+    const VERSION         = '2.7.6';
     const COOKIE          = 'wc_delivery_mode';
     const OPT             = 'wc_plz_filter_v2';
     const CACHE           = 'wc_plz_local_codes';
@@ -91,7 +91,7 @@ final class WC_PLZ_Filter {
         // fgf-Hardening: Server-side enforcement (cookie ist client-controlled)
         add_action( 'woocommerce_check_cart_items',        [ $this, 'validate_cart_items' ] );
         add_action( 'woocommerce_after_checkout_validation', [ $this, 'validate_checkout_plz' ], 10, 2 );
-        add_action( 'woocommerce_single_product_summary',  [ $this, 'block_excluded_single' ], 1 );
+        add_action( 'template_redirect',                    [ $this, 'redirect_excluded_single' ] );
         add_filter( 'woocommerce_is_purchasable',           [ $this, 'block_excluded_purchasable' ], 10, 2 );
 
         // FOUC-Schutz: Inline-Script im <head> versteckt synchron via localStorage-Cache
@@ -430,10 +430,7 @@ final class WC_PLZ_Filter {
         }
     }
 
-    /**
-     * Single-Product-Page: Hinweis-Notice rendern wenn Produkt ausgeschlossen ist.
-     */
-    public function block_excluded_single(): void {
+    public function redirect_excluded_single(): void {
         if ( ! is_product() ) {
             return;
         }
@@ -442,7 +439,7 @@ final class WC_PLZ_Filter {
             return;
         }
 
-        global $product;
+        $product = wc_get_product( get_the_ID() );
         if ( ! $product instanceof \WC_Product ) {
             return;
         }
@@ -452,8 +449,9 @@ final class WC_PLZ_Filter {
             return;
         }
 
-        echo '<div class="woocommerce-info" style="margin-top:16px;">Dieses Produkt ist im Postversand nicht verfügbar. Bitte wählen Sie eine andere Lieferart.</div>';
-        remove_action( 'woocommerce_single_product_summary', 'woocommerce_template_single_add_to_cart', 30 );
+        wc_add_notice( 'Dieses Produkt ist im Postversand nicht verfügbar. Bitte wählen Sie eine andere Lieferart oder ändern Sie Ihre PLZ.', 'error' );
+        wp_safe_redirect( wc_get_page_permalink( 'shop' ) );
+        exit;
     }
 
     /* --- Checkout Prefill --- */
