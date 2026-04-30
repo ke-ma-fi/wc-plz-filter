@@ -450,7 +450,7 @@ final class WC_PLZ_Filter {
         }
 
         wc_add_notice( 'Dieses Produkt ist im Postversand nicht verfügbar. Bitte wählen Sie eine andere Lieferart oder ändern Sie Ihre PLZ.', 'notice' );
-        wp_safe_redirect( home_url( '/' ) );
+        wp_safe_redirect( wp_get_referer() ?: home_url( '/' ) );
         exit;
     }
 
