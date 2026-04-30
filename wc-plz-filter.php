@@ -439,7 +439,7 @@ final class WC_PLZ_Filter {
             return;
         }
 
-        $product = wc_get_product( get_the_ID() );
+        $product = wc_get_product( get_queried_object_id() );
         if ( ! $product instanceof \WC_Product ) {
             return;
         }
@@ -449,8 +449,8 @@ final class WC_PLZ_Filter {
             return;
         }
 
-        wc_add_notice( 'Dieses Produkt ist im Postversand nicht verfügbar. Bitte wählen Sie eine andere Lieferart oder ändern Sie Ihre PLZ.', 'error' );
-        wp_safe_redirect( wc_get_page_permalink( 'shop' ) );
+        wc_add_notice( 'Dieses Produkt ist im Postversand nicht verfügbar. Bitte wählen Sie eine andere Lieferart oder ändern Sie Ihre PLZ.', 'notice' );
+        wp_safe_redirect( home_url( '/' ) );
         exit;
     }
 
