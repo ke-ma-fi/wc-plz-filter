@@ -3,7 +3,7 @@
  * Plugin Name:  WC PLZ-Filter
  * Plugin URI:   https://fischer.digitale-theke.com
  * Description:  PLZ-Popup mit drei Modi (Abholung, Lokale Lieferung, Postversand). Filtert Produkte dynamisch nach WooCommerce-Versandklassen und füllt den Checkout vor.
- * Version:      2.7.4
+ * Version:      2.7.5
  * Author:       Metzgerei Fischer
  * License:      Proprietary
  * License URI:  https://fischer.digitale-theke.com
@@ -23,7 +23,7 @@ defined( 'ABSPATH' ) || exit;
 
 final class WC_PLZ_Filter {
 
-    const VERSION         = '2.7.4';
+    const VERSION         = '2.7.5';
     const COOKIE          = 'wc_delivery_mode';
     const OPT             = 'wc_plz_filter_v2';
     const CACHE           = 'wc_plz_local_codes';
@@ -65,6 +65,7 @@ final class WC_PLZ_Filter {
         add_action( 'woocommerce_delete_shipping_zone', fn() => delete_transient( self::CACHE ) );
 
         add_action( 'wp_enqueue_scripts', [ $this, 'enqueue' ] );
+        add_filter( 'script_loader_tag',  [ $this, 'add_nowprocket_attr' ], 10, 2 );
         add_action( 'wp_footer',          [ $this, 'render_popup' ] );
         add_action( 'rest_api_init',      [ $this, 'register_rest_routes' ] );
 
@@ -584,6 +585,13 @@ final class WC_PLZ_Filter {
         ] );
     }
 
+    public function add_nowprocket_attr( string $tag, string $handle ): string {
+        if ( 'wc-plz-filter' !== $handle ) {
+            return $tag;
+        }
+        return str_replace( '<script ', '<script data-nowprocket ', $tag );
+    }
+
     /**
      * Inline-Script im <head>: liest Cookie + localStorage synchron und injiziert
      * vor Body-Parse einen <style>-Block der ausgeschlossene Produkte versteckt.
@@ -595,7 +603,7 @@ final class WC_PLZ_Filter {
             return;
         }
         ?>
-        <script id="wc-plz-head-hide" data-no-optimize="1" data-no-minify="1" data-no-defer="1" data-cfasync="false">
+        <script id="wc-plz-head-hide" data-no-optimize="1" data-no-minify="1" data-no-defer="1" data-nowprocket data-cfasync="false">
         (function(){
             try {
                 var m = document.cookie.match(/(?:^|; )<?php echo esc_js( self::COOKIE ); ?>=([^;]*)/);
