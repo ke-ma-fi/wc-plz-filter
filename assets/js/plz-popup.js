@@ -242,8 +242,25 @@
     var icon = $("#wc-plz-badge-icon");
     var tooltip = $("#wc-plz-badge-tooltip");
 
-    if (!badge || !mode) {
-      if (badge) badge.style.display = "none";
+    if (!badge) return;
+
+    if (!mode) {
+      badge.classList.remove(
+        "wc-plz-badge--abholung",
+        "wc-plz-badge--local",
+        "wc-plz-badge--post",
+        "wc-plz-badge--skipped",
+      );
+      badge.classList.add("wc-plz-badge--cta");
+      var tooltipDirCta = getTooltipDir(D.badgePosition || "bottom-right");
+      if (tooltip) {
+        tooltip.className = "wc-plz-badge__tooltip";
+        tooltip.classList.add("wc-plz-badge__tooltip--" + tooltipDirCta);
+        tooltip.textContent = D.badgeTooltipSkipped || "";
+      }
+      if (icon) icon.textContent = "\uD83D\uDCCD";
+      if (info) info.textContent = D.badgeCtaText || "PLZ eingeben";
+      fadeIn(badge, 300);
       return;
     }
 
@@ -252,6 +269,7 @@
       "wc-plz-badge--local",
       "wc-plz-badge--post",
       "wc-plz-badge--skipped",
+      "wc-plz-badge--cta",
     );
 
     // Set tooltip direction
@@ -433,9 +451,8 @@
   /* ── Init ───────────────────────────────────── */
 
   function init() {
-    if (state.mode) {
-      updateBadge(state.mode, state.plz);
-    } else if (!parseInt(D.isCheckout, 10)) {
+    updateBadge(state.mode, state.plz);
+    if (!state.mode && !parseInt(D.isCheckout, 10) && getCookie("woocommerce_items_in_cart")) {
       setTimeout(openPopup, 800);
     }
 

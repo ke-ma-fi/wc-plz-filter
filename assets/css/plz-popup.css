@@ -586,6 +586,21 @@ html body button#wc-plz-badge:active {
   color: #555;
 }
 
+/* ─── Badge: CTA state (no mode set yet) ─────── */
+
+@keyframes wc-plz-dot-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.8); }
+}
+
+.wc-plz-badge--cta .wc-plz-badge__dot {
+  animation: wc-plz-dot-pulse 2s ease-in-out infinite;
+}
+
+.wc-plz-badge--cta .wc-plz-badge__edit {
+  display: none !important;
+}
+
 /* ─── Badge positions ────────────────────────── */
 
 /* Offset custom properties (set via inline style from admin) */
