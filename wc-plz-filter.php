@@ -3,7 +3,7 @@
  * Plugin Name:  WC PLZ-Filter
  * Plugin URI:   https://fischer.digitale-theke.com
  * Description:  PLZ-Popup mit drei Modi (Abholung, Lokale Lieferung, Postversand). Filtert Produkte dynamisch nach WooCommerce-Versandklassen und füllt den Checkout vor.
- * Version:      2.7.10
+ * Version:      2.7.11
  * Author:       Metzgerei Fischer
  * License:      Proprietary
  * License URI:  https://fischer.digitale-theke.com
@@ -23,7 +23,7 @@ defined( 'ABSPATH' ) || exit;
 
 final class WC_PLZ_Filter {
 
-    const VERSION         = '2.7.10';
+    const VERSION         = '2.7.11';
     const COOKIE          = 'wc_delivery_mode';
     const OPT             = 'wc_plz_filter_v2';
     const CACHE           = 'wc_plz_local_codes';
@@ -161,6 +161,7 @@ final class WC_PLZ_Filter {
             'badge_tooltip_local'    => 'Für Ihre PLZ ist lokale Auslieferung verfügbar. Das Team der Metzgerei Fischer beliefert Sie persönlich. Zum Ändern klicken.',
             'badge_tooltip_post'     => 'Für Ihre PLZ ist Postversand verfügbar. Einige Frischeprodukte sind bei Versand nicht erhältlich und werden Ihnen nicht angezeigt. Zum Ändern bitte klicken.',
             'badge_tooltip_skipped'  => 'Noch keine Lieferoption gewählt – klicken Sie hier, um Ihre PLZ einzugeben und die passenden Produkte zu sehen.',
+            'popup_trigger'          => 'cart',
         ] );
 
         return $this->settings_cache;
@@ -650,6 +651,7 @@ final class WC_PLZ_Filter {
             'badgeTooltipPost'     => $settings['badge_tooltip_post'],
             'badgeTooltipSkipped'  => $settings['badge_tooltip_skipped'],
             'badgeCtaText'         => 'PLZ eingeben',
+            'popupTrigger'         => $settings['popup_trigger'],
         ] );
     }
 
@@ -820,6 +822,7 @@ final class WC_PLZ_Filter {
             'badge_tooltip_skipped'  => sanitize_textarea_field( $input['badge_tooltip_skipped'] ?? '' ),
             'min_order_local'        => max( 0, (int) ( $input['min_order_local'] ?? 30 ) ),
             'min_order_post'         => max( 0, (int) ( $input['min_order_post'] ?? 30 ) ),
+            'popup_trigger'          => in_array( $input['popup_trigger'] ?? '', [ 'immediate', 'cart' ], true ) ? $input['popup_trigger'] : 'cart',
         ];
     }
 
@@ -873,6 +876,16 @@ final class WC_PLZ_Filter {
                     <tr>
                         <th>Cookie-Laufzeit (Tage)</th>
                         <td><input type="number" name="<?php echo esc_attr( $opt ); ?>[cookie_days]" value="<?php echo esc_attr( $settings['cookie_days'] ); ?>" min="1" max="365" class="small-text" /></td>
+                    </tr>
+                    <tr>
+                        <th>Popup-Auslöser</th>
+                        <td>
+                            <select name="<?php echo esc_attr( $opt ); ?>[popup_trigger]">
+                                <option value="cart" <?php selected( $settings['popup_trigger'], 'cart' ); ?>>Erst nach erstem Artikel im Warenkorb</option>
+                                <option value="immediate" <?php selected( $settings['popup_trigger'], 'immediate' ); ?>>Sofort beim ersten Besuch</option>
+                            </select>
+                            <p class="description">Wann das Popup automatisch öffnet, wenn noch kein PLZ-Cookie gesetzt ist.</p>
+                        </td>
                     </tr>
                     <tr>
                         <th>Mindestbestellwert</th>

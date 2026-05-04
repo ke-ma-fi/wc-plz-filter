@@ -452,7 +452,7 @@
 
   function init() {
     updateBadge(state.mode, state.plz);
-    if (!state.mode && !parseInt(D.isCheckout, 10) && getCookie("woocommerce_items_in_cart")) {
+    if (!state.mode && !parseInt(D.isCheckout, 10) && (D.popupTrigger === "immediate" || getCookie("woocommerce_items_in_cart"))) {
       setTimeout(openPopup, 800);
     }
 
