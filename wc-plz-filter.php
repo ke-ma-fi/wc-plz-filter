@@ -3,7 +3,7 @@
  * Plugin Name:  WC PLZ-Filter
  * Plugin URI:   https://fischer.digitale-theke.com
  * Description:  PLZ-Popup mit drei Modi (Abholung, Lokale Lieferung, Postversand). Filtert Produkte dynamisch nach WooCommerce-Versandklassen und füllt den Checkout vor.
- * Version:      2.7.9
+ * Version:      2.8.0
  * Author:       Metzgerei Fischer
  * License:      Proprietary
  * License URI:  https://fischer.digitale-theke.com
@@ -23,7 +23,7 @@ defined( 'ABSPATH' ) || exit;
 
 final class WC_PLZ_Filter {
 
-    const VERSION         = '2.7.9';
+    const VERSION         = '2.8.0';
     const COOKIE          = 'wc_delivery_mode';
     const OPT             = 'wc_plz_filter_v2';
     const CACHE           = 'wc_plz_local_codes';
@@ -87,6 +87,7 @@ final class WC_PLZ_Filter {
 
         add_action( 'woocommerce_product_query',      [ $this, 'filter_products' ] );
         add_filter( 'woocommerce_checkout_get_value', [ $this, 'prefill_checkout' ], 10, 2 );
+        add_filter( 'woocommerce_shipping_chosen_method', [ $this, 'filter_shipping_method' ], 15, 2 );
 
         // fgf-Hardening: Server-side enforcement (cookie ist client-controlled)
         add_action( 'woocommerce_cart_loaded_from_session',  [ $this, 'remove_excluded_cart_items' ] );
@@ -161,6 +162,9 @@ final class WC_PLZ_Filter {
             'badge_tooltip_local'    => 'Für Ihre PLZ ist lokale Auslieferung verfügbar. Das Team der Metzgerei Fischer beliefert Sie persönlich. Zum Ändern klicken.',
             'badge_tooltip_post'     => 'Für Ihre PLZ ist Postversand verfügbar. Einige Frischeprodukte sind bei Versand nicht erhältlich und werden Ihnen nicht angezeigt. Zum Ändern bitte klicken.',
             'badge_tooltip_skipped'  => 'Noch keine Lieferoption gewählt – klicken Sie hier, um Ihre PLZ einzugeben und die passenden Produkte zu sehen.',
+            'shipping_rate_abholung' => 'willii_pickup:41, willii_pickup:42',
+            'shipping_rate_local'    => 'willii_local:36',
+            'shipping_rate_post'     => 'willii_standard:44',
         ] );
 
         return $this->settings_cache;
@@ -516,6 +520,40 @@ final class WC_PLZ_Filter {
         return ! empty( $state['plz'] ) ? $state['plz'] : $value;
     }
 
+    /* --- Shipping Method Pre-Selection --- */
+
+    public function filter_shipping_method( string $chosen_method, array $rates ): string {
+        $state = $this->get_state();
+        if ( empty( $state['mode'] ) ) {
+            return $chosen_method;
+        }
+
+        $settings = $this->get_settings();
+        $key = match ( $state['mode'] ) {
+            'abholung' => 'shipping_rate_abholung',
+            'local'    => 'shipping_rate_local',
+            'post'     => 'shipping_rate_post',
+            default    => null,
+        };
+
+        if ( $key === null ) {
+            return $chosen_method;
+        }
+
+        $configured = trim( $settings[ $key ] ?? '' );
+        if ( $configured === '' ) {
+            return $chosen_method;
+        }
+
+        foreach ( array_map( 'trim', explode( ',', $configured ) ) as $rate_id ) {
+            if ( $rate_id !== '' && isset( $rates[ $rate_id ] ) ) {
+                return $rate_id;
+            }
+        }
+
+        return $chosen_method;
+    }
+
     /* --- AJAX: PLZ prüfen --- */
 
     public function ajax_check(): void {
@@ -819,6 +857,9 @@ final class WC_PLZ_Filter {
             'badge_tooltip_skipped'  => sanitize_textarea_field( $input['badge_tooltip_skipped'] ?? '' ),
             'min_order_local'        => max( 0, (int) ( $input['min_order_local'] ?? 30 ) ),
             'min_order_post'         => max( 0, (int) ( $input['min_order_post'] ?? 30 ) ),
+            'shipping_rate_abholung' => sanitize_text_field( $input['shipping_rate_abholung'] ?? '' ),
+            'shipping_rate_local'    => sanitize_text_field( $input['shipping_rate_local'] ?? '' ),
+            'shipping_rate_post'     => sanitize_text_field( $input['shipping_rate_post'] ?? '' ),
         ];
     }
 
@@ -885,6 +926,24 @@ final class WC_PLZ_Filter {
                                 <input type="number" name="<?php echo esc_attr( $opt ); ?>[min_order_post]" value="<?php echo esc_attr( $settings['min_order_post'] ); ?>" min="0" step="1" class="small-text" /> €
                             </label>
                             <p class="description">0 = kein Mindestbestellwert. Wird im Warenkorb und beim Checkout geprüft.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Versandmethoden-Vorauswahl</th>
+                        <td>
+                            <label style="display:block;margin-bottom:6px;">
+                                Abholung:
+                                <input type="text" name="<?php echo esc_attr( $opt ); ?>[shipping_rate_abholung]" value="<?php echo esc_attr( $settings['shipping_rate_abholung'] ); ?>" class="regular-text" placeholder="z.B. willii_pickup:41, willii_pickup:42" />
+                            </label>
+                            <label style="display:block;margin-bottom:6px;">
+                                Lokallieferung:
+                                <input type="text" name="<?php echo esc_attr( $opt ); ?>[shipping_rate_local]" value="<?php echo esc_attr( $settings['shipping_rate_local'] ); ?>" class="regular-text" placeholder="z.B. willii_local:36" />
+                            </label>
+                            <label style="display:block;">
+                                Postversand:
+                                <input type="text" name="<?php echo esc_attr( $opt ); ?>[shipping_rate_post]" value="<?php echo esc_attr( $settings['shipping_rate_post'] ); ?>" class="regular-text" placeholder="z.B. willii_standard:44" />
+                            </label>
+                            <p class="description">Rate-IDs der Versandmethoden, die je Modus vorausgewählt werden sollen. Komma-getrennt = erste verfügbare wird verwendet. Leer lassen = keine Vorauswahl.</p>
                         </td>
                     </tr>
                     <tr>
