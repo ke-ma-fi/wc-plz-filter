@@ -12,6 +12,7 @@
  * WC requires at least: 7.0
  *
  * Copyright (c) 2024-2026 Metzgerei Fischer. All rights reserved.
+ * 
  *
  * This software is proprietary and confidential. Unauthorized copying,
  * modification, distribution, or use of this software, in whole or in part,
