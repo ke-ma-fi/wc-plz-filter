@@ -808,7 +808,7 @@ final class WC_PLZ_Filter {
 
         return [
             'excluded_classes'       => array_map( 'intval', (array) ( $input['excluded_classes'] ?? [] ) ),
-            'cookie_days'            => max( 1, (int) ( $input['cookie_days'] ?? 30 ) ),
+            'cookie_days'            => max( 1, (int) ( $input['cookie_days'] ?? 180 ) ),
             'popup_title'            => sanitize_text_field( $input['popup_title'] ?? '' ),
             'popup_text'             => sanitize_textarea_field( $input['popup_text'] ?? '' ),
             'post_msg'               => sanitize_textarea_field( $input['post_msg'] ?? '' ),
