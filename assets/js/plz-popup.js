@@ -1,5 +1,5 @@
 /**
- * WC PLZ-Filter v2.7.2 – Frontend (Vanilla JS, no jQuery)
+ * WC PLZ-Filter v2.7.12 – Frontend (Vanilla JS, no jQuery)
  * Popup (PLZ + Abholung), Badge with Tooltip, Checkout-Sync
  *
  * @copyright Metzgerei Fischer. All rights reserved.
