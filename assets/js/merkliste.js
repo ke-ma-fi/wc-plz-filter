@@ -125,13 +125,14 @@
     var btn = document.getElementById("wc-plz-merkliste-btn");
     if (!btn) return;
 
-    btn.style.display = "";
-
     var list = getMerkliste();
     var count = list.length;
+
+    btn.style.display = count > 0 ? "" : "none";
+
     var countEl = document.getElementById("wc-plz-merkliste-count");
     if (countEl) {
-      countEl.textContent = count > 0 ? (count > 99 ? "99+" : String(count)) : "";
+      countEl.textContent = count > 99 ? "99+" : String(count);
       countEl.classList.toggle("wc-plz-merkliste-btn__count--visible", count > 0);
     }
   }
