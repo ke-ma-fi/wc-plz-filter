@@ -30,5 +30,12 @@ delete_option( 'wc_plz_updater_log' );
 // 3. Delete transients.
 delete_transient( 'wc_plz_local_codes' );
 
-// 4. Clear scheduled cron hook.
+// 4. Clear scheduled cron hooks.
 wp_clear_scheduled_hook( 'wc_plz_stats_cleanup' );
+wp_clear_scheduled_hook( 'wc_plz_reminder_scan' );
+
+// 5. Delete reminder options.
+delete_option( 'wc_plz_reminder' );
+delete_option( 'wc_plz_reminder_log' );
+delete_option( 'wc_plz_reminder_last_run' );
+delete_transient( 'wc_plz_reminder_running' );

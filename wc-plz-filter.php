@@ -73,6 +73,9 @@ final class WC_PLZ_Filter {
         require_once plugin_dir_path( __FILE__ ) . 'includes/class-wc-plz-updater.php';
         $this->updater = WC_PLZ_Updater::instance();
 
+        require_once plugin_dir_path( __FILE__ ) . 'includes/class-wc-plz-reminder.php';
+        WC_PLZ_Reminder::instance();
+
         add_action( 'admin_menu', [ $this, 'admin_menu' ] );
         add_action( 'admin_init', [ $this, 'register_settings' ] );
         add_action( 'admin_init', [ $this, 'handle_admin_reset' ] );
@@ -1037,8 +1040,14 @@ WC_PLZ_Filter::instance();
 register_activation_hook( __FILE__, function () {
     require_once plugin_dir_path( __FILE__ ) . 'includes/class-wc-plz-stats.php';
     WC_PLZ_Stats::activate();
+
+    require_once plugin_dir_path( __FILE__ ) . 'includes/class-wc-plz-reminder.php';
+    WC_PLZ_Reminder::activate();
 } );
 
 register_deactivation_hook( __FILE__, function () {
     wp_clear_scheduled_hook( 'wc_plz_stats_cleanup' );
+
+    require_once plugin_dir_path( __FILE__ ) . 'includes/class-wc-plz-reminder.php';
+    WC_PLZ_Reminder::deactivate();
 } );
