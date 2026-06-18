@@ -23,7 +23,9 @@
   }
 
   function setMerkliste(ids) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(ids));
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(ids));
+    } catch (e) {}
   }
 
   function addProduct(id) {
@@ -122,19 +124,15 @@
   function updateWidget() {
     var btn = document.getElementById("wc-plz-merkliste-btn");
     if (!btn) return;
-    var list = getMerkliste();
-    var count = list.length;
 
-    if (count === 0) {
-      btn.style.display = "none";
-      return;
-    }
     btn.style.display = "";
 
+    var list = getMerkliste();
+    var count = list.length;
     var countEl = document.getElementById("wc-plz-merkliste-count");
     if (countEl) {
-      countEl.textContent = count > 99 ? "99+" : String(count);
-      countEl.classList.toggle("wc-plz-merkliste-btn__count--visible", true);
+      countEl.textContent = count > 0 ? (count > 99 ? "99+" : String(count)) : "";
+      countEl.classList.toggle("wc-plz-merkliste-btn__count--visible", count > 0);
     }
   }
 
@@ -157,6 +155,7 @@
     popover = document.createElement("div");
     popover.id = "wc-plz-merkliste-popover";
     popover.setAttribute("role", "dialog");
+    popover.setAttribute("aria-modal", "true");
     popover.setAttribute("aria-label", "Merkliste");
     popover.innerHTML =
       '<div class="wc-plz-merkliste-popover__header">' +
@@ -229,13 +228,38 @@
 
   /* ── Produkt-Daten per WC Store API laden ───── */
 
+  var STORE_API_PER_PAGE = 100;
+
   function fetchProductData(ids, callback) {
     if (!ids.length) { callback([]); return; }
+
+    // WC Store API caps per_page at 100 — chunk larger lists
+    if (ids.length > STORE_API_PER_PAGE) {
+      var chunks = [];
+      for (var i = 0; i < ids.length; i += STORE_API_PER_PAGE) {
+        chunks.push(ids.slice(i, i + STORE_API_PER_PAGE));
+      }
+      var all = [];
+      var left = chunks.length;
+      var done = false;
+      chunks.forEach(function (chunk) {
+        fetchProductData(chunk, function (products) {
+          if (done) return;
+          if (!products) { done = true; callback(null); return; }
+          all = all.concat(products);
+          if (--left === 0) { done = true; callback(all); }
+        });
+      });
+      return;
+    }
+
     var params = ids.map(function (id) { return "include[]=" + id; }).join("&");
     var xhr = new XMLHttpRequest();
     xhr.open("GET", storeApiBase + "/products?" + params + "&per_page=" + ids.length, true);
     xhr.timeout = 8000;
     xhr.ontimeout = function () { callback(null); };
+    xhr.onerror  = function () { callback(null); };
+    xhr.onabort  = function () { callback(null); };
     xhr.onreadystatechange = function () {
       if (xhr.readyState !== 4) return;
       if (xhr.status >= 200 && xhr.status < 300) {
@@ -365,8 +389,12 @@
     var cartBtn = e.target.closest(".wc-plz-merkliste-item__btn--cart");
     if (cartBtn) {
       var url = cartBtn.dataset.addToCartUrl;
-      if (url && url !== "#" && /^https?:\/\//.test(url)) {
-        window.location.href = url;
+      if (url && url !== "#") {
+        var isRelative = url.charAt(0) === "/" || url.charAt(0) === ".";
+        var isSameOrigin = url.indexOf(window.location.origin + "/") === 0;
+        if (isRelative || isSameOrigin) {
+          window.location.href = url;
+        }
       }
       return;
     }
