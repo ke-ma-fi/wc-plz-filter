@@ -260,7 +260,8 @@
       }
       if (icon) icon.textContent = "\uD83D\uDCCD";
       if (info) info.textContent = D.badgeCtaText || "PLZ eingeben";
-      fadeIn(badge, 300);
+      var groupCta = document.getElementById('wc-plz-widget-group');
+      fadeIn(groupCta || badge, 300);
       return;
     }
 
@@ -310,7 +311,8 @@
         break;
     }
 
-    fadeIn(badge, 300);
+    var group = document.getElementById('wc-plz-widget-group');
+    fadeIn(group || badge, 300);
   }
 
   /* ── Hidden IDs Fetching ────────────────────── */
