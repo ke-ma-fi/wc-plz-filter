@@ -208,16 +208,19 @@ final class WC_PLZ_Reminder {
 
     private function get_pending_orders(): array {
         $threshold_secs = (int) $this->get_settings()['pending_threshold'] * MINUTE_IN_SECONDS;
-        $cutoff         = gmdate( 'Y-m-d H:i:s', time() - $threshold_secs );
 
         /*
          * Datumsfilter-Syntax: WC 7.0+ (HPOS-kompatibel) unterstützt '<DATETIME>'.
          * Falls die WC-Version diese Syntax nicht kennt, hier auf PHP-seitige
          * Filterung (array_filter nach get_date_created()->getTimestamp()) umsteigen.
          */
+        /*
+         * date_created mit Unix-Timestamp: kompatibelste Form für WC 7+ / HPOS.
+         * Status ohne 'wc-' Präfix: Standard für wc_get_orders() (intern normalisiert).
+         */
         $orders = wc_get_orders( [
-            'status'       => 'wc-pending',
-            'date_created' => '<' . $cutoff,
+            'status'       => [ 'pending' ],
+            'date_created' => '<' . (time() - $threshold_secs),
             'limit'        => 200,
             'return'       => 'objects',
         ] );
