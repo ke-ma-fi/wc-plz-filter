@@ -366,10 +366,9 @@ final class WC_PLZ_Reminder {
     /* ── Mail-Log ────────────────────────────────── */
 
     private function append_log( array $entry ): void {
-        $log   = $this->get_log();
-        $log[] = $entry;
-        // Neueste zuerst, FIFO-Begrenzung auf MAX_LOG
-        $log   = array_slice( array_reverse( $log ), 0, self::MAX_LOG );
+        $log = $this->get_log();
+        array_unshift( $log, $entry );
+        $log = array_slice( $log, 0, self::MAX_LOG );
         update_option( self::OPT_LOG, $log, false );
     }
 
