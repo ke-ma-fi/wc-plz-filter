@@ -100,7 +100,10 @@ final class WC_PLZ_Reminder {
 
     /* ── Cron-Reschedule bei Settings-Änderung ───── */
 
-    public function maybe_reschedule_cron( array $old, array $new ): void {
+    public function maybe_reschedule_cron( $old, $new ): void {
+        $old = is_array( $old ) ? $old : [];
+        $new = is_array( $new ) ? $new : [];
+
         $dev_old      = (int) ( $old['dev_mode'] ?? 1 );
         $dev_new      = (int) ( $new['dev_mode'] ?? 1 );
         $interval_old = (int) ( $old['cron_interval'] ?? 5 );
@@ -400,6 +403,10 @@ final class WC_PLZ_Reminder {
         // Manueller Testlauf
         if ( isset( $_POST['wc_plz_reminder_testrun'] ) ) {
             check_admin_referer( 'wc_plz_reminder_testrun' );
+            if ( empty( $this->get_settings()['dev_mode'] ) ) {
+                wp_safe_redirect( admin_url( 'admin.php?page=wc-plz-reminder' ) );
+                exit;
+            }
             $results = $this->run_scan( true );
             $msg     = sprintf(
                 'Testlauf abgeschlossen: %d Order(s) gefunden, %d Mail(s) versendet, %d Fehler.',
@@ -418,10 +425,14 @@ final class WC_PLZ_Reminder {
             $order_id = absint( $_POST['wc_plz_reminder_order_id'] ?? 0 );
             $order    = $order_id ? wc_get_order( $order_id ) : null;
             if ( $order ) {
-                $ok  = $this->resend_for_order( $order );
-                $msg = $ok
-                    ? sprintf( 'Mail für Bestellung #%d erfolgreich erneut versendet.', $order_id )
-                    : sprintf( 'Fehler beim Versand für Bestellung #%d.', $order_id );
+                $ok = $this->resend_for_order( $order );
+                if ( $ok === true ) {
+                    $msg = sprintf( 'Mail für Bestellung #%d erfolgreich erneut versendet.', $order_id );
+                } elseif ( $ok === null ) {
+                    $msg = sprintf( 'Bestellung #%d ist nicht mehr offen – kein Versand.', $order_id );
+                } else {
+                    $msg = sprintf( 'Fehler beim Versand für Bestellung #%d.', $order_id );
+                }
             } else {
                 $msg = 'Bestellung nicht gefunden.';
             }
@@ -506,14 +517,14 @@ final class WC_PLZ_Reminder {
                             <td><?php echo $last_run ? esc_html( $last_run ) : '—'; ?></td>
                         </tr>
                         <tr>
-                            <td><strong>Offene pending Orders (älter als <?php echo (int) $s['pending_threshold']; ?> Min.)</strong></td>
+                            <td><strong>Offene pending Orders (älter als <?php echo (int) $s['pending_threshold']; ?> Min., max. 200)</strong></td>
                             <td><?php echo (int) $pending_count; ?></td>
                         </tr>
                     </tbody>
                 </table>
 
                 <?php if ( $is_dev ) : ?>
-                    <p style="margin-top:16px;">
+                    <div style="margin-top:16px;">
                         <form method="post" style="display:inline;">
                             <?php wp_nonce_field( 'wc_plz_reminder_testrun' ); ?>
                             <input type="hidden" name="wc_plz_reminder_testrun" value="1" />
@@ -522,7 +533,7 @@ final class WC_PLZ_Reminder {
                         <span style="margin-left:12px;color:#646970;font-size:13px;">
                             Führt exakt denselben Scan wie der reguläre Cron aus — jedoch an Test-E-Mail-Adresse, ohne Meta-Flag zu setzen.
                         </span>
-                    </p>
+                    </div>
                 <?php endif; ?>
             </div>
 
