@@ -136,15 +136,20 @@ final class WC_PLZ_Reminder {
     }
 
     private static function schedule_cron_static( int $minutes ): void {
-        // Custom Schedule manuell eintragen, da der Filter ggf. noch nicht aktiv war
-        $interval = $minutes * MINUTE_IN_SECONDS;
-        add_filter( 'cron_schedules', function( array $schedules ) use ( $interval, $minutes ): array {
-            $schedules[ self::CRON_SCH ] = [
-                'interval' => $interval,
-                'display'  => sprintf( 'Alle %d Minuten (Zahlungs-Erinnerung)', $minutes ),
-            ];
-            return $schedules;
-        } );
+        // During activation the instance doesn't exist yet, so register_cron_schedule()
+        // isn't wired up — add the schedule inline so wp_schedule_event() accepts it.
+        // When called later (e.g. settings change) the instance is live and the
+        // persistent filter from __construct() already covers this.
+        if ( self::$instance === null ) {
+            $interval = $minutes * MINUTE_IN_SECONDS;
+            add_filter( 'cron_schedules', function( array $schedules ) use ( $interval, $minutes ): array {
+                $schedules[ self::CRON_SCH ] = [
+                    'interval' => $interval,
+                    'display'  => sprintf( 'Alle %d Minuten (Zahlungs-Erinnerung)', $minutes ),
+                ];
+                return $schedules;
+            } );
+        }
 
         if ( ! wp_next_scheduled( self::CRON_HOOK ) ) {
             wp_schedule_event( time(), self::CRON_SCH, self::CRON_HOOK );
@@ -229,8 +234,14 @@ final class WC_PLZ_Reminder {
     }
 
     public function get_pending_orders_count(): int {
-        $orders = $this->get_pending_orders();
-        return count( $orders );
+        $threshold_secs = (int) $this->get_settings()['pending_threshold'] * MINUTE_IN_SECONDS;
+        $ids = wc_get_orders( [
+            'status'       => [ 'pending' ],
+            'date_created' => '<' . ( time() - $threshold_secs ),
+            'limit'        => 200,
+            'return'       => 'ids',
+        ] );
+        return count( is_array( $ids ) ? $ids : [] );
     }
 
     /* ── Platzhalter-Ersetzung ───────────────────── */
@@ -323,6 +334,10 @@ final class WC_PLZ_Reminder {
      * Für den "Erneut senden"-Button gedacht.
      */
     private function resend_for_order( WC_Order $order ): ?bool {
+        if ( $order->get_status() !== 'pending' ) {
+            return null;
+        }
+
         $is_dev  = (bool) $this->get_settings()['dev_mode'];
         $s       = $this->get_settings();
         $to      = $is_dev ? $s['test_email'] : $order->get_billing_email();
@@ -595,7 +610,7 @@ final class WC_PLZ_Reminder {
                 <?php wp_nonce_field( 'wc_plz_reminder_reset_text' ); ?>
                 <input type="hidden" name="wc_plz_reminder_reset_text" value="1" />
                 <input type="submit" class="button button-secondary" value="Mailtexte auf Standardwerte zurücksetzen"
-                    onclick="return confirm('Wirklich alle drei Mailtext-Felder (Betreff, Vor-Link-Text, Nach-Link-Text) auf die Standardwerte zurücksetzen?');" />
+                    onclick="return confirm('Wirklich Betreff und Mailtext auf die Standardwerte zurücksetzen?');" />
             </form>
 
             <hr />
