@@ -63,8 +63,7 @@ final class WC_PLZ_Reminder {
             'cron_interval'     => 5,
             'pending_threshold' => 5,
             'mail_subject'      => 'Ihre Bestellung #{order_number} wartet auf Zahlung',
-            'mail_before'       => "Guten Tag {customer_first_name},\n\nvielen Dank für Ihre Bestellung #{order_number} vom {order_date} in Höhe von {order_total}.\n\nIhre Zahlung steht noch aus. Bitte schließen Sie die Zahlung über den folgenden Link ab:",
-            'mail_after'        => "Falls Sie Fragen zu Ihrer Bestellung haben, stehen wir Ihnen gerne zur Verfügung.\n\nMit freundlichen Grüßen\nIhr Shop-Team",
+            'mail_body'         => "Guten Tag {customer_first_name},\n\nvielen Dank für Ihre Bestellung #{order_number} vom {order_date} in Höhe von {order_total}.\n\nIhre Zahlung steht noch aus. Bitte schließen Sie die Zahlung über den folgenden Link ab:\n\n{payment_url}\n\nFalls Sie Fragen zu Ihrer Bestellung haben, stehen wir Ihnen gerne zur Verfügung.\n\nMit freundlichen Grüßen\nIhr Shop-Team",
         ];
     }
 
@@ -95,8 +94,7 @@ final class WC_PLZ_Reminder {
             'cron_interval'     => max( 1, (int) ( $input['cron_interval'] ?? 5 ) ),
             'pending_threshold' => max( 0, (int) ( $input['pending_threshold'] ?? 5 ) ),
             'mail_subject'      => sanitize_text_field( $input['mail_subject'] ?? '' ),
-            'mail_before'       => sanitize_textarea_field( $input['mail_before'] ?? '' ),
-            'mail_after'        => sanitize_textarea_field( $input['mail_after'] ?? '' ),
+            'mail_body'         => sanitize_textarea_field( $input['mail_body'] ?? '' ),
         ];
     }
 
@@ -258,17 +256,15 @@ final class WC_PLZ_Reminder {
     }
 
     private function build_body( WC_Order $order, bool $is_dev ): string {
-        $s        = $this->get_settings();
-        $before   = $this->replace_placeholders( $s['mail_before'], $order );
-        $pay_link = $order->get_checkout_payment_url();
-        $after    = $this->replace_placeholders( $s['mail_after'], $order );
+        $s    = $this->get_settings();
+        $body = $this->replace_placeholders( $s['mail_body'], $order );
 
         $date   = $order->get_date_created();
         $footer = "\n\n---\n"
                 . 'Bestellnummer: ' . $order->get_order_number() . "\n"
                 . 'Bestelldatum: '  . ( $date ? wp_date( get_option( 'date_format' ), $date->getTimestamp() ) : '–' );
 
-        $body = $before . "\n\n" . $pay_link . "\n\n" . $after . $footer;
+        $body .= $footer;
 
         if ( $is_dev ) {
             $body = '[TEST-Mail – echte Order-ID: #' . $order->get_id() . "]\n\n" . $body;
@@ -423,8 +419,7 @@ final class WC_PLZ_Reminder {
             $current = $this->get_settings();
             $defs    = self::defaults();
             $current['mail_subject'] = $defs['mail_subject'];
-            $current['mail_before']  = $defs['mail_before'];
-            $current['mail_after']   = $defs['mail_after'];
+            $current['mail_body']    = $defs['mail_body'];
             update_option( self::OPT, $current );
             $this->settings_cache = null;
             wp_safe_redirect( admin_url( 'admin.php?page=wc-plz-reminder&text_reset=1' ) );
@@ -556,10 +551,20 @@ final class WC_PLZ_Reminder {
                 <h2>Mailtext-Konfiguration</h2>
                 <p>
                     Verfügbare Platzhalter:
-                    <code>{order_number}</code>, <code>{order_date}</code>, <code>{customer_first_name}</code>,
-                    <code>{customer_last_name}</code>, <code>{customer_full_name}</code>, <code>{order_total}</code>,
-                    <code>{payment_url}</code>, <code>{shop_name}</code>
                 </p>
+                <table class="widefat" style="max-width:600px;margin-bottom:16px;">
+                    <thead><tr><th>Platzhalter</th><th>Wird ersetzt durch</th></tr></thead>
+                    <tbody>
+                        <tr><td><code>{order_number}</code></td><td>Bestellnummer</td></tr>
+                        <tr><td><code>{order_date}</code></td><td>Bestelldatum (WP-Datumsformat)</td></tr>
+                        <tr><td><code>{customer_first_name}</code></td><td>Vorname (Billing)</td></tr>
+                        <tr><td><code>{customer_last_name}</code></td><td>Nachname (Billing)</td></tr>
+                        <tr><td><code>{customer_full_name}</code></td><td>Vor- und Nachname kombiniert</td></tr>
+                        <tr><td><code>{order_total}</code></td><td>Bestellsumme inkl. Währung</td></tr>
+                        <tr><td><code>{payment_url}</code></td><td>Direkter Zahlungs-Link</td></tr>
+                        <tr><td><code>{shop_name}</code></td><td>Name des Shops</td></tr>
+                    </tbody>
+                </table>
                 <p class="description">
                     Bestellnummer und Bestelldatum werden immer am Ende der Mail eingefügt, auch wenn die Platzhalter aus dem Text entfernt wurden.
                 </p>
@@ -571,15 +576,10 @@ final class WC_PLZ_Reminder {
                         </td>
                     </tr>
                     <tr>
-                        <th scope="row">Mailtext vor dem Zahlungs-Link</th>
+                        <th scope="row">Mailtext</th>
                         <td>
-                            <textarea name="<?php echo esc_attr( self::OPT ); ?>[mail_before]" rows="6" class="large-text"><?php echo esc_textarea( $s['mail_before'] ); ?></textarea>
-                        </td>
-                    </tr>
-                    <tr>
-                        <th scope="row">Mailtext nach dem Zahlungs-Link</th>
-                        <td>
-                            <textarea name="<?php echo esc_attr( self::OPT ); ?>[mail_after]" rows="4" class="large-text"><?php echo esc_textarea( $s['mail_after'] ); ?></textarea>
+                            <textarea name="<?php echo esc_attr( self::OPT ); ?>[mail_body]" rows="12" class="large-text"><?php echo esc_textarea( $s['mail_body'] ); ?></textarea>
+                            <p class="description">Platziere <code>{payment_url}</code> an der Stelle, an der der Zahlungs-Link erscheinen soll.</p>
                         </td>
                     </tr>
                 </table>
