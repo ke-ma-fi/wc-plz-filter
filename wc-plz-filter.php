@@ -749,7 +749,7 @@ final class WC_PLZ_Filter {
         }
 
         // Build inline style for offsets (on the group, not the badge)
-        $group_style = 'display:none;';
+        $group_style = '';
         if ( $offset_x !== 0 ) {
             $group_style .= '--wc-plz-offset-x:' . $offset_x . 'px;';
         }

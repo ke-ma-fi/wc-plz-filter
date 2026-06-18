@@ -126,7 +126,9 @@
 
   function fadeIn(el, duration) {
     if (!el) return;
-    el.style.display = "";
+    var wasHidden = el.style.display === "none";
+    el.style.removeProperty("display");
+    if (!wasHidden) return;
     el.style.opacity = "0";
     el.style.transition = "opacity " + (duration || 200) + "ms ease";
     // Force reflow before transition
