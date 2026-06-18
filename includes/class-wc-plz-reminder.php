@@ -243,7 +243,7 @@ final class WC_PLZ_Reminder {
             '{customer_first_name}' => $order->get_billing_first_name(),
             '{customer_last_name}'  => $order->get_billing_last_name(),
             '{customer_full_name}'  => trim( $order->get_billing_first_name() . ' ' . $order->get_billing_last_name() ),
-            '{order_total}'         => strip_tags( $order->get_formatted_order_total() ),
+            '{order_total}'         => html_entity_decode( strip_tags( $order->get_formatted_order_total() ), ENT_QUOTES | ENT_HTML5, 'UTF-8' ),
             '{payment_url}'         => $order->get_checkout_payment_url(),
             '{shop_name}'           => get_bloginfo( 'name' ),
         ];
