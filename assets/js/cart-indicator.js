@@ -84,6 +84,8 @@
     xhr.open("GET", storeApiBase + "/cart", true);
     xhr.timeout = 8000;
     xhr.ontimeout = function () { fetchInFlight = false; };
+    xhr.onerror  = function () { fetchInFlight = false; };
+    xhr.onabort  = function () { fetchInFlight = false; };
     xhr.onreadystatechange = function () {
       if (xhr.readyState !== 4) return;
       fetchInFlight = false;
