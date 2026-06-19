@@ -17,6 +17,7 @@ A lightweight WooCommerce plugin for German online shops that presents customers
 - **Floating badge** – shows current delivery mode with hover tooltip; click to reopen the popup
 - **Persistent state** – choice is stored in a cookie and synced to the WooCommerce customer session; survives page navigation and browser back/forward (bfcache)
 - **PLZ statistics** – anonymous, GDPR-compliant per-event log of which postcodes and modes are selected; filterable by date range; accessible via REST API
+- **Payment reminder** – automatically sends a payment-link email to customers whose orders remain in `pending` status for too long; configurable interval, threshold, subject, body, reply-to address, and dev mode with test-email target
 - **Admin settings page** – configure excluded shipping classes, popup texts, accent colour, badge position, tooltips, and cookie lifetime
 - **Admin PLZ tester** – check any postcode against detected zones right in the dashboard
 - **Developer reset** – one-click cookie and session reset for testing
@@ -136,6 +137,53 @@ curl -u ck_xxx:cs_xxx \
   ]
 }
 ```
+
+## Payment Reminder
+
+Navigate to **WooCommerce → Zahlungs-Erinnerung** to configure the automatic payment reminder.
+
+### How it works
+
+When a WooCommerce order stays in `pending` (payment awaited) status longer than the configured threshold, the plugin sends the customer a reminder email containing a direct payment link. Each order receives **at most one reminder** (tracked via order meta). In dev mode the email is redirected to a test address and the meta flag is never set, so the same order can be tested repeatedly.
+
+### Settings
+
+| Setting | Description |
+|---------|-------------|
+| Dev mode | When active: no automatic cron, all emails sent to test address only (default: on) |
+| Test email address | Recipient for all emails while dev mode is active (default: WordPress admin email) |
+| Reply-To address | `Reply-To` header set on every outgoing reminder email; leave empty to omit the header (default: WordPress admin email) |
+| Cron interval (minutes) | How often the cron job scans for pending orders (default: 5) |
+| Pending threshold (minutes) | Orders older than this value trigger a reminder (default: 5) |
+| Email subject | Customisable subject line; supports placeholders |
+| Email body | Customisable body text; supports placeholders |
+
+### Placeholders
+
+The following placeholders are available in subject and body:
+
+| Placeholder | Replaced with |
+|-------------|---------------|
+| `{order_number}` | WooCommerce order number |
+| `{order_date}` | Order date (WordPress date format) |
+| `{customer_first_name}` | Billing first name |
+| `{customer_last_name}` | Billing last name |
+| `{customer_full_name}` | Billing first + last name |
+| `{order_total}` | Order total incl. currency |
+| `{payment_url}` | Direct payment link |
+| `{shop_name}` | Shop name |
+
+Order number and date are always appended to the email footer, even if the placeholders are removed from the body.
+
+### Dev mode & manual test run
+
+While dev mode is active, a **"Jetzt testen"** button is shown in the admin panel. It runs the exact same scan as the regular cron job but sends all emails to the configured test address and never sets the reminder meta flag on orders.
+
+### Mail log
+
+The last 50 sent reminders are shown in a log table under the settings. Each entry includes timestamp, recipient, order ID, mode (dev/live), and status. A **"Erneut senden"** button allows resending for any logged order, bypassing the one-reminder-per-order limit.
+
+---
 
 ## Developer Reset
 
