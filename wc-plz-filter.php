@@ -660,6 +660,8 @@ final class WC_PLZ_Filter {
             'popupTrigger'         => $settings['popup_trigger'],
         ] );
 
+        $on_product_page = is_shop() || is_product_category() || is_product_tag() || is_product();
+
         if ( (int) $settings['merkliste_enabled'] === 1 ) {
             wp_enqueue_style( 'wc-plz-merkliste', $url . 'assets/css/merkliste.css', [ 'wc-plz-filter' ], self::VERSION );
             wp_enqueue_script( 'wc-plz-merkliste', $url . 'assets/js/merkliste.js', [ 'wc-plz-filter' ], self::VERSION, [
@@ -671,7 +673,7 @@ final class WC_PLZ_Filter {
             ] );
         }
 
-        if ( (int) $settings['cart_indicator_enabled'] === 1 ) {
+        if ( (int) $settings['cart_indicator_enabled'] === 1 && $on_product_page ) {
             wp_enqueue_style( 'wc-plz-cart-indicator', $url . 'assets/css/cart-indicator.css', [ 'wc-plz-filter' ], self::VERSION );
             wp_enqueue_script( 'wc-plz-cart-indicator', $url . 'assets/js/cart-indicator.js', [ 'wc-plz-filter' ], self::VERSION, [
                 'in_footer' => true,

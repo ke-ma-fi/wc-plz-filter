@@ -52,7 +52,12 @@
       if (inCart) {
         if (!existing) {
           var wrapper = getImageWrapper(tile);
-          if (getComputedStyle(wrapper).position === "static") wrapper.style.position = "relative";
+          // Only read computed style when the wrapper hasn't been positioned yet.
+          // Avoids a layout flush per tile on repeat calls.
+          if (!wrapper._plzPositioned) {
+            if (getComputedStyle(wrapper).position === "static") wrapper.style.position = "relative";
+            wrapper._plzPositioned = true;
+          }
           var indicator = document.createElement("span");
           indicator.className = "wc-plz-cart-indicator";
           indicator.innerHTML = CART_SVG;
@@ -114,12 +119,12 @@
   document.addEventListener("wc-blocks_removed_from_cart", fetchCart);
   document.addEventListener("wc-blocks_set_cart_data", fetchCart);
 
-  // WC Classic AJAX: delegate on add-to-cart button click, then poll after AJAX completes
+  // WC Classic AJAX: jQuery event is authoritative when available; setTimeout is the fallback.
+  // Avoid both firing: the jQuery handler cancels the pending timeout.
   document.addEventListener("click", function (e) {
-    if (e.target.closest(".add_to_cart_button, .single_add_to_cart_button")) {
-      setTimeout(fetchCart, 800);
-      setTimeout(fetchCart, 2500); // retry for slow servers
-    }
+    if (!e.target.closest(".add_to_cart_button, .single_add_to_cart_button")) return;
+    if (window.jQuery) return; // jQuery path handles this via added_to_cart event below
+    setTimeout(fetchCart, 1200);
   });
 
   // jQuery compat: listen for added_to_cart / removed_from_cart events
@@ -150,8 +155,15 @@
 
   /* ── Init ───────────────────────────────────── */
 
+  // WC sets woocommerce_items_in_cart=1 when the cart is not empty.
+  // Reading a cookie costs nothing and avoids a REST call (+ session cookie) for
+  // visitors with an empty cart — keeping WP Rocket page cache intact for them.
+  function cartIsKnownNonEmpty() {
+    return document.cookie.indexOf("woocommerce_items_in_cart=1") !== -1;
+  }
+
   function init() {
-    fetchCart();
+    if (cartIsKnownNonEmpty()) fetchCart();
     watchCartCount();
   }
 
