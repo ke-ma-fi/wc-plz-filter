@@ -1,65 +1,62 @@
 /* WC PLZ-Filter – Merkliste */
 
-/* ─── Merkliste-Button (rund, neben PLZ-Pill) ─── */
+/* ─── Merkliste-Button ─── */
 
-html body button#wc-plz-merkliste-btn {
-  position: relative !important;
+/* Hidden until JS adds --visible (avoids flash before JS runs) */
+#wc-plz-merkliste-btn {
+  display: none;
+}
+
+#wc-plz-merkliste-btn.wc-plz-merkliste-btn--visible {
+  position: relative;
   display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  cursor: pointer !important;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
   padding: 0 !important;
-  width: 40px !important;
-  height: 40px !important;
-  min-width: 0 !important;
-  min-height: 0 !important;
+  width: 40px;
+  height: 40px;
+  min-width: 0;
+  min-height: 0;
   background: #fff !important;
-  background-color: #fff !important;
   background-image: none !important;
+  border: 0 !important;
   border-left: 3px solid var(--wc-plz-color, #c00) !important;
-  border-top: 0 !important;
-  border-right: 0 !important;
-  border-bottom: 0 !important;
   border-radius: 999px !important;
-  box-shadow:
-    0 2px 8px rgba(0, 0, 0, 0.10),
-    0 0 0 1px rgba(0, 0, 0, 0.06) !important;
-  transition:
-    box-shadow 0.25s ease,
-    transform 0.2s ease !important;
-  font-size: 0 !important;
-  line-height: 1 !important;
-  white-space: nowrap !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,.10), 0 0 0 1px rgba(0,0,0,.06) !important;
+  transition: box-shadow .25s ease, transform .2s ease;
+  font-size: 0;
+  line-height: 1;
+  white-space: nowrap;
   text-shadow: none !important;
   filter: none !important;
-  color: #555 !important;
-  flex-shrink: 0 !important;
+  color: #555;
+  flex-shrink: 0;
 }
 
-html body button#wc-plz-merkliste-btn:hover {
-  box-shadow:
-    0 4px 20px rgba(0, 0, 0, 0.15),
-    0 0 0 1px rgba(0, 0, 0, 0.08) !important;
-  transform: scale(1.06) !important;
+#wc-plz-merkliste-btn.wc-plz-merkliste-btn--visible:hover,
+#wc-plz-merkliste-btn.wc-plz-merkliste-btn--visible:focus,
+#wc-plz-merkliste-btn.wc-plz-merkliste-btn--visible:focus-visible {
+  border: 0 !important;
+  border-left: 3px solid var(--wc-plz-color, #c00) !important;
+  box-shadow: 0 4px 20px rgba(0,0,0,.15), 0 0 0 1px rgba(0,0,0,.08) !important;
+  transform: scale(1.06);
 }
 
-html body button#wc-plz-merkliste-btn:active {
-  transform: scale(0.95) !important;
+#wc-plz-merkliste-btn.wc-plz-merkliste-btn--visible:active {
+  border: 0 !important;
+  border-left: 3px solid var(--wc-plz-color, #c00) !important;
+  transform: scale(0.95);
 }
 
+/* Badge-Zahl */
 .wc-plz-merkliste-btn__icon {
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--wc-plz-color, #c00);
-  flex-shrink: 0;
 }
 
-.wc-plz-merkliste-btn__icon svg {
-  display: block;
-}
-
-/* Badge-Zahl */
 .wc-plz-merkliste-btn__count {
   position: absolute;
   top: -5px;
@@ -69,7 +66,7 @@ html body button#wc-plz-merkliste-btn:active {
   padding: 0 4px;
   background: var(--wc-plz-color, #c00);
   color: #fff;
-  font-size: 0.68rem;
+  font-size: .68rem;
   font-weight: 700;
   line-height: 18px;
   border-radius: 999px;
@@ -83,7 +80,7 @@ html body button#wc-plz-merkliste-btn:active {
   display: block;
 }
 
-/* ─── Kachel-Icon (Notizblock-Toggle) ─────────── */
+/* ─── Kachel-Toggle ─── */
 
 .wc-plz-mk-toggle {
   position: absolute;
@@ -96,34 +93,32 @@ html body button#wc-plz-merkliste-btn:active {
   width: 32px;
   height: 32px;
   padding: 0;
-  background: rgba(255, 255, 255, 0.7);
+  background: rgba(255,255,255,.7);
   border: 0;
   border-radius: 8px;
   cursor: pointer;
-  opacity: 0.45;
-  transition: opacity 0.2s ease, background 0.2s ease, transform 0.15s ease;
+  opacity: .45;
+  transition: opacity .2s ease, background .2s ease, transform .15s ease;
   backdrop-filter: blur(2px);
   color: #333;
   line-height: 1;
 }
 
 .wc-plz-mk-toggle:hover {
-  opacity: 0.85;
-  background: rgba(255, 255, 255, 0.92);
+  opacity: .85;
+  background: rgba(255,255,255,.92);
   transform: scale(1.08);
 }
 
 .wc-plz-mk-toggle--active {
   opacity: 1;
-  background: rgba(255, 255, 255, 0.95);
+  background: rgba(255,255,255,.95);
   color: var(--wc-plz-color, #c00);
 }
 
-.wc-plz-mk-toggle--active:hover {
-  opacity: 1;
-}
+.wc-plz-mk-toggle--active:hover { opacity: 1; }
 
-/* ─── Merkliste-Popover ────────────────────────── */
+/* ─── Merkliste-Popover ─── */
 
 #wc-plz-merkliste-popover {
   position: fixed;
@@ -136,17 +131,14 @@ html body button#wc-plz-merkliste-btn:active {
   flex-direction: column;
   background: #fff;
   border-radius: 16px;
-  box-shadow:
-    0 8px 40px rgba(0, 0, 0, 0.18),
-    0 0 0 1px rgba(0, 0, 0, 0.07);
-  font-family:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  box-shadow: 0 8px 40px rgba(0,0,0,.18), 0 0 0 1px rgba(0,0,0,.07);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   overflow: hidden;
-  animation: wc-plz-popover-in 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: wc-plz-popover-in .22s cubic-bezier(.22,1,.36,1) both;
 }
 
 @keyframes wc-plz-popover-in {
-  from { opacity: 0; transform: translateY(8px) scale(0.97); }
+  from { opacity: 0; transform: translateY(8px) scale(.97); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
@@ -160,13 +152,13 @@ html body button#wc-plz-merkliste-btn:active {
 }
 
 .wc-plz-merkliste-popover__title {
-  font-size: 0.92rem;
+  font-size: .92rem;
   font-weight: 700;
   color: #222;
   margin: 0;
 }
 
-html body button.wc-plz-merkliste-popover__close {
+.wc-plz-merkliste-popover__close {
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
@@ -178,13 +170,12 @@ html body button.wc-plz-merkliste-popover__close {
   border-radius: 50% !important;
   cursor: pointer !important;
   color: #666 !important;
-  font-size: 1rem !important;
   line-height: 1 !important;
-  transition: background 0.15s ease !important;
-  flex-shrink: 0 !important;
+  transition: background .15s ease !important;
+  flex-shrink: 0;
 }
 
-html body button.wc-plz-merkliste-popover__close:hover {
+.wc-plz-merkliste-popover__close:hover {
   background: #e8e8e8 !important;
   color: #333 !important;
 }
@@ -200,7 +191,7 @@ html body button.wc-plz-merkliste-popover__close:hover {
   padding: 24px 16px;
   text-align: center;
   color: #888;
-  font-size: 0.85rem;
+  font-size: .85rem;
 }
 
 /* Listeneintrag */
@@ -209,12 +200,10 @@ html body button.wc-plz-merkliste-popover__close:hover {
   align-items: center;
   gap: 10px;
   padding: 8px 12px;
-  transition: background 0.15s ease;
+  transition: background .15s ease;
 }
 
-.wc-plz-merkliste-item:hover {
-  background: #fafafa;
-}
+.wc-plz-merkliste-item:hover { background: #fafafa; }
 
 .wc-plz-merkliste-item__img {
   width: 44px;
@@ -232,7 +221,7 @@ html body button.wc-plz-merkliste-popover__close:hover {
 
 .wc-plz-merkliste-item__name {
   display: block;
-  font-size: 0.82rem;
+  font-size: .82rem;
   font-weight: 600;
   color: #222;
   white-space: nowrap;
@@ -242,7 +231,7 @@ html body button.wc-plz-merkliste-popover__close:hover {
 
 .wc-plz-merkliste-item__price {
   display: block;
-  font-size: 0.78rem;
+  font-size: .78rem;
   color: #666;
   margin-top: 2px;
 }
@@ -253,7 +242,7 @@ html body button.wc-plz-merkliste-popover__close:hover {
   flex-shrink: 0;
 }
 
-html body button.wc-plz-merkliste-item__btn {
+.wc-plz-merkliste-item__btn {
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
@@ -263,32 +252,26 @@ html body button.wc-plz-merkliste-item__btn {
   border: 0 !important;
   border-radius: 8px !important;
   cursor: pointer !important;
-  font-size: 0.85rem !important;
+  font-size: .85rem !important;
   line-height: 1 !important;
-  transition: background 0.15s ease, transform 0.1s ease !important;
+  transition: background .15s ease, transform .1s ease !important;
 }
 
-html body button.wc-plz-merkliste-item__btn:active {
-  transform: scale(0.92) !important;
-}
+.wc-plz-merkliste-item__btn:active { transform: scale(.92) !important; }
 
-html body button.wc-plz-merkliste-item__btn--cart {
+.wc-plz-merkliste-item__btn--cart {
   background: #e8f5e9 !important;
   color: #2e7d32 !important;
 }
 
-html body button.wc-plz-merkliste-item__btn--cart:hover {
-  background: #c8e6c9 !important;
-}
+.wc-plz-merkliste-item__btn--cart:hover { background: #c8e6c9 !important; }
 
-html body button.wc-plz-merkliste-item__btn--remove {
+.wc-plz-merkliste-item__btn--remove {
   background: #fce4e4 !important;
   color: #c62828 !important;
 }
 
-html body button.wc-plz-merkliste-item__btn--remove:hover {
-  background: #ffcdd2 !important;
-}
+.wc-plz-merkliste-item__btn--remove:hover { background: #ffcdd2 !important; }
 
 /* Fußnote */
 .wc-plz-merkliste-popover__footer {
@@ -298,13 +281,13 @@ html body button.wc-plz-merkliste-item__btn--remove:hover {
 }
 
 .wc-plz-merkliste-popover__note {
-  font-size: 0.72rem;
+  font-size: .72rem;
   color: #aaa;
   line-height: 1.4;
   margin: 0;
 }
 
-/* ─── Responsive ─────────────────────────────── */
+/* ─── Responsive ─── */
 
 @media (max-width: 480px) {
   #wc-plz-merkliste-popover {
@@ -314,7 +297,7 @@ html body button.wc-plz-merkliste-item__btn--remove:hover {
     max-height: 380px;
   }
 
-  html body button#wc-plz-merkliste-btn {
+  #wc-plz-merkliste-btn.wc-plz-merkliste-btn--visible {
     width: 34px !important;
     height: 34px !important;
   }

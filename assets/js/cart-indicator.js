@@ -115,15 +115,27 @@
     return ids;
   }
 
-  /* ── Live-Update (jQuery-frei) ──────────────── */
+  /* ── Live-Update ────────────────────────────── */
 
   // WC Blocks: native CustomEvents
   document.addEventListener("wc-blocks_added_to_cart", fetchCart);
   document.addEventListener("wc-blocks_removed_from_cart", fetchCart);
   document.addEventListener("wc-blocks_set_cart_data", fetchCart);
 
-  // WC Classic: MutationObserver auf Cart-Count-Element
-  // Themes verwenden unterschiedliche Selektoren — alle gängigen abdecken
+  // WC Classic AJAX: delegate on add-to-cart button click, then poll after AJAX completes
+  document.addEventListener("click", function (e) {
+    if (e.target.closest(".add_to_cart_button, .single_add_to_cart_button")) {
+      setTimeout(fetchCart, 800);
+      setTimeout(fetchCart, 2500); // retry for slow servers
+    }
+  });
+
+  // jQuery compat: listen for added_to_cart / removed_from_cart events
+  if (window.jQuery) {
+    window.jQuery(document.body).on("added_to_cart removed_from_cart", fetchCart);
+  }
+
+  // WC Classic: MutationObserver on cart count element as fallback
   var cartCountObserver = null;
 
   function watchCartCount() {
@@ -140,9 +152,7 @@
       if (target) break;
     }
     if (!target) return;
-    cartCountObserver = new MutationObserver(function () {
-      fetchCart();
-    });
+    cartCountObserver = new MutationObserver(fetchCart);
     cartCountObserver.observe(target, { childList: true, characterData: true, subtree: true });
   }
 

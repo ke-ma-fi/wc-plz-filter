@@ -31,11 +31,7 @@ html body #wc-plz-overlay button:active,
 html body button#wc-plz-badge:focus,
 html body button#wc-plz-badge:focus-visible,
 html body button#wc-plz-badge:hover,
-html body button#wc-plz-badge:active,
-html body button#wc-plz-merkliste-btn:focus,
-html body button#wc-plz-merkliste-btn:focus-visible,
-html body button#wc-plz-merkliste-btn:hover,
-html body button#wc-plz-merkliste-btn:active {
+html body button#wc-plz-badge:active {
   border: none !important;
   outline: none !important;
   box-shadow: none !important;

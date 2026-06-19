@@ -9,6 +9,8 @@
   if (!M) return;
 
   var STORAGE_KEY = "plz_merkliste";
+  var CACHE_KEY   = "plz_mk_pcache";
+  var CACHE_TTL   = 600000; // 10 minutes
   var storeApiBase = (M.storeApiUrl || "/wp-json/wc/store/v1").replace(/\/$/, "");
 
   /* ── LocalStorage helpers ───────────────────── */
@@ -23,17 +25,12 @@
   }
 
   function setMerkliste(ids) {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(ids));
-    } catch (e) {}
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(ids)); } catch (e) {}
   }
 
   function addProduct(id) {
     var list = getMerkliste();
-    if (list.indexOf(id) === -1) {
-      list.push(id);
-      setMerkliste(list);
-    }
+    if (list.indexOf(id) === -1) { list.push(id); setMerkliste(list); }
   }
 
   function removeProduct(id) {
@@ -44,9 +41,24 @@
     return getMerkliste().indexOf(id) !== -1;
   }
 
+  /* ── Product cache ──────────────────────────── */
+
+  function loadProductCache() {
+    try {
+      var c = JSON.parse(localStorage.getItem(CACHE_KEY) || "null");
+      if (c && c.ts && Date.now() - c.ts < CACHE_TTL) return c.map;
+    } catch (e) {}
+    return null;
+  }
+
+  function saveProductCache(productMap) {
+    try {
+      localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), map: productMap }));
+    } catch (e) {}
+  }
+
   /* ── Product-ID aus Kachel-DOM ──────────────── */
 
-  // Unterstützt .pdb{id} (fgf-Custom-Grid) und .post-{id} (WC-Standard-Loop)
   function getProductIdFromEl(el) {
     if (!el) return null;
     var classes = el.className || "";
@@ -54,30 +66,24 @@
     if (m) return parseInt(m[1], 10);
     m = classes.match(/\bpost-(\d+)\b/);
     if (m) return parseInt(m[1], 10);
-    // data-product-id auf dem Element selbst
     if (el.dataset && el.dataset.productId) return parseInt(el.dataset.productId, 10);
     return null;
   }
 
-  // Findet alle Produktkacheln auf der aktuellen Seite
   function getAllTiles() {
     var results = [];
-    // fgf-Custom-Grid: Elemente mit pdb{id}-Klasse
     var pdbEls = document.querySelectorAll("[class*='pdb']");
     pdbEls.forEach(function (el) {
       if (/\bpdb\d+\b/.test(el.className)) results.push(el);
     });
-    // WC-Standard-Loop: .products li.post-{id}
     var wcEls = document.querySelectorAll(".products li[class*='post-']");
     wcEls.forEach(function (el) {
-      if (/\bpost-\d+\b/.test(el.className) && results.indexOf(el) === -1) {
-        results.push(el);
-      }
+      if (/\bpost-\d+\b/.test(el.className) && results.indexOf(el) === -1) results.push(el);
     });
     return results;
   }
 
-  /* ── Toggle-Icon in Kacheln injizieren ─────── */
+  /* ── Toggle-Icon in Kacheln ─────────────────── */
 
   var TOGGLE_SVG =
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512" fill="currentColor" ' +
@@ -89,10 +95,7 @@
 
   function ensureToggleIcon(tile, productId) {
     if (tile.querySelector(".wc-plz-mk-toggle")) return;
-    // Kachel braucht position:relative für absolute Icon-Positionierung
-    if (getComputedStyle(tile).position === "static") {
-      tile.classList.add("wc-plz-tile-positioned");
-    }
+    if (getComputedStyle(tile).position === "static") tile.classList.add("wc-plz-tile-positioned");
     var btn = document.createElement("button");
     btn.className = "wc-plz-mk-toggle";
     btn.type = "button";
@@ -112,10 +115,7 @@
       if (!btn) return;
       var active = isInMerkliste(id);
       btn.classList.toggle("wc-plz-mk-toggle--active", active);
-      btn.setAttribute(
-        "aria-label",
-        active ? "Von Merkliste entfernen" : "Zur Merkliste hinzufügen"
-      );
+      btn.setAttribute("aria-label", active ? "Von Merkliste entfernen" : "Zur Merkliste hinzufügen");
     });
   }
 
@@ -124,16 +124,8 @@
   function updateWidget() {
     var btn = document.getElementById("wc-plz-merkliste-btn");
     if (!btn) return;
-
-    var list = getMerkliste();
-    var count = list.length;
-
-    if (count > 0) {
-      btn.style.removeProperty("display");
-    } else {
-      btn.style.setProperty("display", "none", "important");
-    }
-
+    var count = getMerkliste().length;
+    btn.classList.toggle("wc-plz-merkliste-btn--visible", count > 0);
     var countEl = document.getElementById("wc-plz-merkliste-count");
     if (countEl) {
       countEl.textContent = count > 99 ? "99+" : String(count);
@@ -149,9 +141,7 @@
 
   function getFocusableEls(container) {
     return Array.prototype.slice.call(
-      container.querySelectorAll(
-        'button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])'
-      )
+      container.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])')
     );
   }
 
@@ -171,16 +161,10 @@
       "</div>" +
       '<div class="wc-plz-merkliste-popover__list" id="wc-plz-merkliste-list"></div>' +
       '<div class="wc-plz-merkliste-popover__footer">' +
-        '<p class="wc-plz-merkliste-popover__note">' +
-          "Diese Merkliste wird nur in diesem Browser gespeichert und geht beim Löschen der Browserdaten verloren." +
-        "</p>" +
+        '<p class="wc-plz-merkliste-popover__note">Diese Merkliste wird nur in diesem Browser gespeichert und geht beim Löschen der Browserdaten verloren.</p>' +
       "</div>";
     document.body.appendChild(popover);
-
-    popover
-      .querySelector(".wc-plz-merkliste-popover__close")
-      .addEventListener("click", closePopover);
-
+    popover.querySelector(".wc-plz-merkliste-popover__close").addEventListener("click", closePopover);
     return popover;
   }
 
@@ -204,15 +188,12 @@
     previouslyFocused = null;
   }
 
-  // Positioniert Popover relativ zur Widget-Group oder dem Merkliste-Button
   function positionPopover(p) {
     var btn = document.getElementById("wc-plz-merkliste-btn");
     if (!btn) return;
     var rect = btn.getBoundingClientRect();
     var vw = window.innerWidth;
     var vh = window.innerHeight;
-
-    // Vertikal: oberhalb des Buttons wenn unten wenig Platz
     if (rect.top > vh / 2) {
       p.style.bottom = (vh - rect.top + 8) + "px";
       p.style.top = "auto";
@@ -220,8 +201,6 @@
       p.style.top = (rect.bottom + 8) + "px";
       p.style.bottom = "auto";
     }
-
-    // Horizontal: an Button-Seite ausrichten
     if (rect.left < vw / 2) {
       p.style.left = rect.left + "px";
       p.style.right = "auto";
@@ -231,24 +210,38 @@
     }
   }
 
-  /* ── Produkt-Daten per WC Store API laden ───── */
-
-  var STORE_API_PER_PAGE = 100;
+  /* ── Produkt-Daten laden (mit Cache) ────────── */
 
   function fetchProductData(ids, callback) {
     if (!ids.length) { callback([]); return; }
 
-    // WC Store API caps per_page at 100 — chunk larger lists
-    if (ids.length > STORE_API_PER_PAGE) {
-      var chunks = [];
-      for (var i = 0; i < ids.length; i += STORE_API_PER_PAGE) {
-        chunks.push(ids.slice(i, i + STORE_API_PER_PAGE));
+    // Check cache first
+    var cached = loadProductCache();
+    if (cached) {
+      var allCached = ids.every(function (id) { return cached[id]; });
+      if (allCached) {
+        // Serve from cache immediately; refresh in background
+        var cachedProducts = ids.map(function (id) { return cached[id]; }).filter(Boolean);
+        callback(cachedProducts, true); // true = from cache
+        fetchFromApi(ids, function (fresh) {
+          if (fresh) callback(fresh, false);
+        });
+        return;
       }
-      var all = [];
-      var left = chunks.length;
-      var done = false;
+    }
+
+    fetchFromApi(ids, callback);
+  }
+
+  var STORE_API_PER_PAGE = 100;
+
+  function fetchFromApi(ids, callback) {
+    if (ids.length > STORE_API_PER_PAGE) {
+      var chunks = [], all = [], left, done = false;
+      for (var i = 0; i < ids.length; i += STORE_API_PER_PAGE) chunks.push(ids.slice(i, i + STORE_API_PER_PAGE));
+      left = chunks.length;
       chunks.forEach(function (chunk) {
-        fetchProductData(chunk, function (products) {
+        fetchFromApi(chunk, function (products) {
           if (done) return;
           if (!products) { done = true; callback(null); return; }
           all = all.concat(products);
@@ -268,7 +261,14 @@
     xhr.onreadystatechange = function () {
       if (xhr.readyState !== 4) return;
       if (xhr.status >= 200 && xhr.status < 300) {
-        try { callback(JSON.parse(xhr.responseText)); } catch (e) { callback(null); }
+        try {
+          var products = JSON.parse(xhr.responseText);
+          // Update cache
+          var map = loadProductCache() || {};
+          products.forEach(function (p) { map[p.id] = p; });
+          saveProductCache(map);
+          callback(products);
+        } catch (e) { callback(null); }
       } else {
         callback(null);
       }
@@ -288,36 +288,41 @@
       return;
     }
 
-    listEl.innerHTML = '<p class="wc-plz-merkliste-popover__loading">Lade…</p>';
+    // Show "Lade…" only if no cache available
+    var cached = loadProductCache();
+    var allCached = cached && ids.every(function (id) { return cached[id]; });
+    if (!allCached) {
+      listEl.innerHTML = '<p class="wc-plz-merkliste-popover__loading">Lade…</p>';
+    }
 
-    fetchProductData(ids, function (products) {
+    fetchProductData(ids, function (products, fromCache) {
       if (!products) {
-        listEl.innerHTML = '<p class="wc-plz-merkliste-popover__empty">Produkte konnten nicht geladen werden.</p>';
+        if (!fromCache) {
+          listEl.innerHTML = '<p class="wc-plz-merkliste-popover__empty">Produkte konnten nicht geladen werden.</p>';
+        }
         return;
       }
-      // Reihenfolge aus LocalStorage beibehalten
+
+      // Keep LocalStorage order; build id→product map
       var productMap = {};
-      products.forEach(function (p) { productMap[p.id] = p; });
+      products.forEach(function (prod) { productMap[prod.id] = prod; });
 
       var html = ids.map(function (id) {
         var prod = productMap[id];
         if (!prod) return "";
-        var img = (prod.images && prod.images[0] && prod.images[0].thumbnail) || "";
+        var img  = (prod.images && prod.images[0] && prod.images[0].thumbnail) || "";
         var name = prod.name || "";
         var price = (prod.prices && prod.prices.price_html) ? prod.prices.price_html : "";
-        var addToCartUrl = (prod.add_to_cart && prod.add_to_cart.url) ? prod.add_to_cart.url : "#";
         return (
           '<div class="wc-plz-merkliste-item" data-product-id="' + id + '">' +
-            (img ? '<img class="wc-plz-merkliste-item__img" src="' + escHtml(img) + '" alt="">' : '') +
+            (img ? '<img class="wc-plz-merkliste-item__img" src="' + escHtml(img) + '" alt="" loading="lazy">' : '') +
             '<div class="wc-plz-merkliste-item__details">' +
               '<span class="wc-plz-merkliste-item__name">' + escHtml(name) + "</span>" +
-              // price_html from WC Store API is intentional HTML (formatted price markup from WC itself)
-            (price ? '<span class="wc-plz-merkliste-item__price">' + price + "</span>" : "") +
+              (price ? '<span class="wc-plz-merkliste-item__price">' + price + "</span>" : "") +
             "</div>" +
             '<div class="wc-plz-merkliste-item__actions">' +
               '<button type="button" class="wc-plz-merkliste-item__btn wc-plz-merkliste-item__btn--cart" ' +
-                'data-add-to-cart-url="' + escHtml(addToCartUrl) + '" data-product-id="' + id + '" ' +
-                'aria-label="In den Warenkorb">' +
+                'data-product-id="' + id + '" aria-label="In den Warenkorb">' +
                 '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>' +
               "</button>" +
               '<button type="button" class="wc-plz-merkliste-item__btn wc-plz-merkliste-item__btn--remove" ' +
@@ -335,10 +340,8 @@
 
   function escHtml(str) {
     return String(str)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
 
   /* ── Event-Delegation ───────────────────────── */
@@ -350,14 +353,9 @@
       e.preventDefault();
       e.stopPropagation();
       var id = parseInt(toggleBtn.dataset.productId, 10);
-      if (isInMerkliste(id)) {
-        removeProduct(id);
-      } else {
-        addProduct(id);
-      }
+      if (isInMerkliste(id)) { removeProduct(id); } else { addProduct(id); }
       applyTileIcons();
       updateWidget();
-      // Popover live aktualisieren wenn offen
       if (popoverOpen && popover) renderPopoverList(popover);
       return;
     }
@@ -375,16 +373,14 @@
     if (removeBtn) {
       var pid = parseInt(removeBtn.dataset.productId, 10);
       removeProduct(pid);
-      // Item aus Popover-DOM entfernen
       var item = removeBtn.closest(".wc-plz-merkliste-item");
       if (item) item.remove();
       applyTileIcons();
       updateWidget();
-      // Leer-Zustand prüfen
       if (popover) {
-        var list = popover.querySelector("#wc-plz-merkliste-list");
-        if (list && !list.querySelector(".wc-plz-merkliste-item")) {
-          list.innerHTML = '<p class="wc-plz-merkliste-popover__empty">Keine Produkte auf der Merkliste.</p>';
+        var listEl = popover.querySelector("#wc-plz-merkliste-list");
+        if (listEl && !listEl.querySelector(".wc-plz-merkliste-item")) {
+          listEl.innerHTML = '<p class="wc-plz-merkliste-popover__empty">Keine Produkte auf der Merkliste.</p>';
         }
       }
       return;
@@ -393,36 +389,28 @@
     // In-den-Warenkorb-Button im Popover
     var cartBtn = e.target.closest(".wc-plz-merkliste-item__btn--cart");
     if (cartBtn) {
-      var url = cartBtn.dataset.addToCartUrl;
-      if (url && url !== "#") {
-        var isRelative = url.charAt(0) === "/" || url.charAt(0) === ".";
-        var isSameOrigin = url.indexOf(window.location.origin + "/") === 0;
-        if (isRelative || isSameOrigin) {
-          window.location.href = url;
-        }
+      e.preventDefault();
+      var productId = parseInt(cartBtn.dataset.productId, 10);
+      if (productId) {
+        // Standard WC add-to-cart URL — works on all WooCommerce installations
+        window.location.href = location.origin + "/?add-to-cart=" + productId;
       }
       return;
     }
 
     // Klick außerhalb schließt Popover
-    if (
-      popoverOpen &&
-      popover &&
-      !popover.contains(e.target) &&
-      !e.target.closest("#wc-plz-merkliste-btn")
-    ) {
+    if (popoverOpen && popover && !popover.contains(e.target) && !e.target.closest("#wc-plz-merkliste-btn")) {
       closePopover();
     }
   });
 
-  // Escape schließt Popover; Tab wird innerhalb des Popovers gefangen
+  // Escape schließt; Tab bleibt im Popover
   document.addEventListener("keydown", function (e) {
     if (e.key === "Escape" && popoverOpen) { closePopover(); return; }
     if (e.key === "Tab" && popoverOpen && popover) {
       var focusable = getFocusableEls(popover);
       if (!focusable.length) { e.preventDefault(); return; }
-      var first = focusable[0];
-      var last = focusable[focusable.length - 1];
+      var first = focusable[0], last = focusable[focusable.length - 1];
       if (e.shiftKey) {
         if (document.activeElement === first) { e.preventDefault(); last.focus(); }
       } else {
@@ -436,6 +424,12 @@
   function init() {
     applyTileIcons();
     updateWidget();
+
+    // Warm up cache if merkliste is not empty
+    var ids = getMerkliste();
+    if (ids.length && !loadProductCache()) {
+      fetchFromApi(ids, function () {}); // background prefetch, no-op callback
+    }
   }
 
   if (document.readyState === "loading") {
@@ -444,11 +438,7 @@
     init();
   }
 
-  // bfcache: Icons nach Back-Navigation neu anwenden
   window.addEventListener("pageshow", function (e) {
-    if (e.persisted) {
-      applyTileIcons();
-      updateWidget();
-    }
+    if (e.persisted) { applyTileIcons(); updateWidget(); }
   });
 })();
