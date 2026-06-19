@@ -26,6 +26,18 @@
   var getProductIdFromEl = tiles.getProductIdFromEl;
   var getAllTiles = tiles.getAllTiles;
 
+  /* ── Bild-Container finden ──────────────────── */
+
+  function getImageWrapper(tile) {
+    var fig = tile.querySelector("figure");
+    if (fig) return fig;
+    var links = tile.querySelectorAll("a");
+    for (var i = 0; i < links.length; i++) {
+      if (links[i].querySelector("img")) return links[i];
+    }
+    return tile;
+  }
+
   /* ── Indicators auf Kacheln anwenden ────────── */
 
   function applyIndicators(inCartIds) {
@@ -39,13 +51,12 @@
 
       if (inCart) {
         if (!existing) {
-          if (getComputedStyle(tile).position === "static") {
-            tile.classList.add("wc-plz-tile-positioned");
-          }
+          var wrapper = getImageWrapper(tile);
+          if (getComputedStyle(wrapper).position === "static") wrapper.style.position = "relative";
           var indicator = document.createElement("span");
           indicator.className = "wc-plz-cart-indicator";
           indicator.innerHTML = CART_SVG;
-          tile.appendChild(indicator);
+          wrapper.appendChild(indicator);
         }
       } else {
         if (existing) existing.remove();

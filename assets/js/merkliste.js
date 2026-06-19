@@ -74,16 +74,27 @@
     'M0 416c0 35.3 28.7 64 64 64l197.5 0c17 0 33.3-6.7 45.3-18.7L429.3 338.7c12-12 18.7-28.3 18.7-45.3L448 96c0-35.3-28.7-64-64-64L64 32C28.7 32 0 60.7 0 96L0 416z"/>' +
     "</svg>";
 
+  function getImageWrapper(tile) {
+    var fig = tile.querySelector("figure");
+    if (fig) return fig;
+    var links = tile.querySelectorAll("a");
+    for (var i = 0; i < links.length; i++) {
+      if (links[i].querySelector("img")) return links[i];
+    }
+    return tile;
+  }
+
   function ensureToggleIcon(tile, productId) {
     if (tile.querySelector(".wc-plz-mk-toggle")) return;
-    if (getComputedStyle(tile).position === "static") tile.classList.add("wc-plz-tile-positioned");
+    var wrapper = getImageWrapper(tile);
+    if (getComputedStyle(wrapper).position === "static") wrapper.style.position = "relative";
     var btn = document.createElement("button");
     btn.className = "wc-plz-mk-toggle";
     btn.type = "button";
     btn.setAttribute("aria-label", "Zur Merkliste hinzufügen");
     btn.dataset.productId = productId;
     btn.innerHTML = TOGGLE_SVG;
-    tile.appendChild(btn);
+    wrapper.appendChild(btn);
   }
 
   function applyTileIcons() {
