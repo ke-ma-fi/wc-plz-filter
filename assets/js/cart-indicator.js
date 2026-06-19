@@ -19,32 +19,10 @@
     '<path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>' +
     "</svg>";
 
-  /* ── Produkt-IDs aus Kachel-DOM ─────────────── */
+  /* ── Shared tile utils (from plz-popup.js) ─── */
 
-  function getProductIdFromEl(el) {
-    if (!el) return null;
-    var classes = el.className || "";
-    var m = classes.match(/\bpdb(\d+)\b/);
-    if (m) return parseInt(m[1], 10);
-    m = classes.match(/\bpost-(\d+)\b/);
-    if (m) return parseInt(m[1], 10);
-    return null;
-  }
-
-  function getAllTiles() {
-    var results = [];
-    var pdbEls = document.querySelectorAll("[class*='pdb']");
-    pdbEls.forEach(function (el) {
-      if (/\bpdb\d+\b/.test(el.className)) results.push(el);
-    });
-    var wcEls = document.querySelectorAll(".products li[class*='post-']");
-    wcEls.forEach(function (el) {
-      if (/\bpost-\d+\b/.test(el.className) && results.indexOf(el) === -1) {
-        results.push(el);
-      }
-    });
-    return results;
-  }
+  var getProductIdFromEl = window.wcPlzTiles.getProductIdFromEl;
+  var getAllTiles = window.wcPlzTiles.getAllTiles;
 
   /* ── Indicators auf Kacheln anwenden ────────── */
 
@@ -83,8 +61,9 @@
     var xhr = new XMLHttpRequest();
     xhr.open("GET", storeApiBase + "/cart", true);
     xhr.timeout = 8000;
-    xhr.ontimeout = function () { fetchInFlight = false; };
-    xhr.onerror  = function () { fetchInFlight = false; };
+    function onError() { fetchInFlight = false; applyIndicators([]); }
+    xhr.ontimeout = onError;
+    xhr.onerror   = onError;
     xhr.onabort  = function () { fetchInFlight = false; };
     xhr.onreadystatechange = function () {
       if (xhr.readyState !== 4) return;
