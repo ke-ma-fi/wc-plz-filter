@@ -21,8 +21,10 @@
 
   /* ── Shared tile utils (from plz-popup.js) ─── */
 
-  var getProductIdFromEl = window.wcPlzTiles.getProductIdFromEl;
-  var getAllTiles = window.wcPlzTiles.getAllTiles;
+  var tiles = window.wcPlzTiles;
+  if (!tiles) return;
+  var getProductIdFromEl = tiles.getProductIdFromEl;
+  var getAllTiles = tiles.getAllTiles;
 
   /* ── Indicators auf Kacheln anwenden ────────── */
 

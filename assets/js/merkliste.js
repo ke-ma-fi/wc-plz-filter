@@ -60,6 +60,7 @@
   /* ── Shared tile utils (from plz-popup.js) ─── */
 
   var tiles = window.wcPlzTiles;
+  if (!tiles) return;
   var getProductIdFromEl = tiles.getProductIdFromEl;
   var getAllTiles = tiles.getAllTiles;
 
@@ -173,7 +174,13 @@
     popoverOpen = false;
     if (previouslyFocused) { previouslyFocused.focus(); previouslyFocused = null; }
     popover.classList.add("wc-plz-merkliste-popover--closing");
+    // Fallback for prefers-reduced-motion or browsers that suppress the animation
+    var hideTimer = setTimeout(function () {
+      popover.classList.remove("wc-plz-merkliste-popover--closing");
+      popover.style.display = "none";
+    }, 250);
     popover.addEventListener("animationend", function () {
+      clearTimeout(hideTimer);
       popover.classList.remove("wc-plz-merkliste-popover--closing");
       popover.style.display = "none";
     }, { once: true });
@@ -185,6 +192,9 @@
     var rect = btn.getBoundingClientRect();
     var vw = window.innerWidth;
     var vh = window.innerHeight;
+    var pw = p.offsetWidth || 320;
+
+    // Vertical: open above button when in lower half of screen
     if (rect.top > vh / 2) {
       p.style.bottom = (vh - rect.top + 8) + "px";
       p.style.top = "auto";
@@ -192,11 +202,13 @@
       p.style.top = (rect.bottom + 8) + "px";
       p.style.bottom = "auto";
     }
+
+    // Horizontal: anchor to near side, clamp so popover stays within viewport
     if (rect.left < vw / 2) {
-      p.style.left = rect.left + "px";
+      p.style.left = Math.max(8, Math.min(rect.left, vw - pw - 8)) + "px";
       p.style.right = "auto";
     } else {
-      p.style.right = (vw - rect.right) + "px";
+      p.style.right = Math.max(8, Math.min(vw - rect.right, vw - pw - 8)) + "px";
       p.style.left = "auto";
     }
   }

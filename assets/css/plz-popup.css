@@ -39,9 +39,6 @@ html body button#wc-plz-badge:active {
   filter: none !important;
 }
 
-/* Shared: tiles need position:relative for absolute-positioned child icons */
-.wc-plz-tile-positioned { position: relative; }
-
 /* Overlay */
 .wc-plz-overlay {
   position: fixed;
