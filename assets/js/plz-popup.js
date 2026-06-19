@@ -591,4 +591,28 @@
   } else {
     init();
   }
+
+  // Shared tile utilities — used by merkliste.js and cart-indicator.js
+  window.wcPlzTiles = {
+    getProductIdFromEl: function (el) {
+      if (!el) return null;
+      var classes = el.className || "";
+      var m = classes.match(/\bpdb(\d+)\b/);
+      if (m) return parseInt(m[1], 10);
+      m = classes.match(/\bpost-(\d+)\b/);
+      if (m) return parseInt(m[1], 10);
+      if (el.dataset && el.dataset.productId) return parseInt(el.dataset.productId, 10);
+      return null;
+    },
+    getAllTiles: function () {
+      var results = [];
+      document.querySelectorAll("[class*='pdb']").forEach(function (el) {
+        if (/\bpdb\d+\b/.test(el.className)) results.push(el);
+      });
+      document.querySelectorAll(".products li[class*='post-']").forEach(function (el) {
+        if (/\bpost-\d+\b/.test(el.className) && results.indexOf(el) === -1) results.push(el);
+      });
+      return results;
+    }
+  };
 })();

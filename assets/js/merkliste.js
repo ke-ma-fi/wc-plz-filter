@@ -57,31 +57,11 @@
     } catch (e) {}
   }
 
-  /* ── Product-ID aus Kachel-DOM ──────────────── */
+  /* ── Shared tile utils (from plz-popup.js) ─── */
 
-  function getProductIdFromEl(el) {
-    if (!el) return null;
-    var classes = el.className || "";
-    var m = classes.match(/\bpdb(\d+)\b/);
-    if (m) return parseInt(m[1], 10);
-    m = classes.match(/\bpost-(\d+)\b/);
-    if (m) return parseInt(m[1], 10);
-    if (el.dataset && el.dataset.productId) return parseInt(el.dataset.productId, 10);
-    return null;
-  }
-
-  function getAllTiles() {
-    var results = [];
-    var pdbEls = document.querySelectorAll("[class*='pdb']");
-    pdbEls.forEach(function (el) {
-      if (/\bpdb\d+\b/.test(el.className)) results.push(el);
-    });
-    var wcEls = document.querySelectorAll(".products li[class*='post-']");
-    wcEls.forEach(function (el) {
-      if (/\bpost-\d+\b/.test(el.className) && results.indexOf(el) === -1) results.push(el);
-    });
-    return results;
-  }
+  var tiles = window.wcPlzTiles;
+  var getProductIdFromEl = tiles.getProductIdFromEl;
+  var getAllTiles = tiles.getAllTiles;
 
   /* ── Toggle-Icon in Kacheln ─────────────────── */
 
@@ -162,9 +142,17 @@
       '<div class="wc-plz-merkliste-popover__list" id="wc-plz-merkliste-list"></div>' +
       '<div class="wc-plz-merkliste-popover__footer">' +
         '<p class="wc-plz-merkliste-popover__note">Diese Merkliste wird nur in diesem Browser gespeichert und geht beim Löschen der Browserdaten verloren.</p>' +
+        '<button type="button" class="wc-plz-merkliste-popover__clear">Liste leeren</button>' +
       "</div>";
     document.body.appendChild(popover);
     popover.querySelector(".wc-plz-merkliste-popover__close").addEventListener("click", closePopover);
+    popover.querySelector(".wc-plz-merkliste-popover__clear").addEventListener("click", function () {
+      setMerkliste([]);
+      applyTileIcons();
+      updateWidget();
+      var listEl = popover.querySelector("#wc-plz-merkliste-list");
+      if (listEl) listEl.innerHTML = '<p class="wc-plz-merkliste-popover__empty">Keine Produkte auf der Merkliste.</p>';
+    });
     return popover;
   }
 
@@ -181,11 +169,14 @@
   }
 
   function closePopover() {
-    if (!popover) return;
-    popover.style.display = "none";
+    if (!popover || !popoverOpen) return;
     popoverOpen = false;
-    if (previouslyFocused) previouslyFocused.focus();
-    previouslyFocused = null;
+    if (previouslyFocused) { previouslyFocused.focus(); previouslyFocused = null; }
+    popover.classList.add("wc-plz-merkliste-popover--closing");
+    popover.addEventListener("animationend", function () {
+      popover.classList.remove("wc-plz-merkliste-popover--closing");
+      popover.style.display = "none";
+    }, { once: true });
   }
 
   function positionPopover(p) {
@@ -405,10 +396,24 @@
         return;
       }
 
-      // Success
+      // Success: remove from Merkliste
+      removeProduct(productId);
+      applyTileIcons();
+      updateWidget();
+
+      // Remove item row after brief checkmark feedback
       btn.innerHTML = CART_SVG_OK;
       btn.style.opacity = "1";
-      reset(1800);
+      setTimeout(function () {
+        var item = btn.closest(".wc-plz-merkliste-item");
+        if (item) item.remove();
+        if (popover) {
+          var listEl = popover.querySelector("#wc-plz-merkliste-list");
+          if (listEl && !listEl.querySelector(".wc-plz-merkliste-item")) {
+            listEl.innerHTML = '<p class="wc-plz-merkliste-popover__empty">Keine Produkte auf der Merkliste.</p>';
+          }
+        }
+      }, 700);
 
       // Update WC cart fragments (mini-cart widget etc.)
       if (res && res.fragments && window.jQuery) {
