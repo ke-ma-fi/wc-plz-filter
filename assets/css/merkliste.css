@@ -84,36 +84,39 @@
 
 .wc-plz-mk-toggle {
   position: absolute;
-  top: 8px;
+  bottom: 8px;
   left: 8px;
   z-index: 10;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   padding: 0;
-  background: rgba(255,255,255,.7);
+  background: rgba(255,255,255,.88);
   border: 0;
-  border-radius: 8px;
+  border-radius: 50%;
   cursor: pointer;
-  opacity: .45;
-  transition: opacity .2s ease, background .2s ease, transform .15s ease;
-  backdrop-filter: blur(2px);
-  color: #333;
+  opacity: .75;
+  transition: opacity .2s ease, background .2s ease, transform .15s ease, box-shadow .2s ease;
+  backdrop-filter: blur(4px);
+  box-shadow: 0 2px 6px rgba(0,0,0,.18);
+  color: #444;
   line-height: 1;
 }
 
 .wc-plz-mk-toggle:hover {
-  opacity: .85;
-  background: rgba(255,255,255,.92);
+  opacity: 1;
+  background: rgba(255,255,255,.97);
   transform: scale(1.08);
+  box-shadow: 0 3px 10px rgba(0,0,0,.22);
 }
 
 .wc-plz-mk-toggle--active {
   opacity: 1;
-  background: rgba(255,255,255,.95);
+  background: rgba(255,255,255,.97);
   color: var(--wc-plz-color, #c00);
+  box-shadow: 0 2px 8px rgba(0,0,0,.20);
 }
 
 .wc-plz-mk-toggle--active:hover { opacity: 1; }
