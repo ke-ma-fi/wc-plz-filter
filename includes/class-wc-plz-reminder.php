@@ -57,9 +57,11 @@ final class WC_PLZ_Reminder {
     /* ── Defaults ────────────────────────────────── */
 
     private static function defaults(): array {
+        $admin_email = get_option( 'admin_email', '' );
         return [
             'dev_mode'          => 1,
-            'test_email'        => get_option( 'admin_email', '' ),
+            'test_email'        => $admin_email,
+            'reply_to'          => $admin_email,
             'cron_interval'     => 5,
             'pending_threshold' => 5,
             'mail_subject'      => 'Ihre Bestellung #{order_number} wartet auf Zahlung',
@@ -91,6 +93,7 @@ final class WC_PLZ_Reminder {
         return [
             'dev_mode'          => ! empty( $input['dev_mode'] ) ? 1 : 0,
             'test_email'        => sanitize_email( $input['test_email'] ?? '' ),
+            'reply_to'          => sanitize_email( $input['reply_to'] ?? '' ),
             'cron_interval'     => max( 1, (int) ( $input['cron_interval'] ?? 5 ) ),
             'pending_threshold' => max( 0, (int) ( $input['pending_threshold'] ?? 5 ) ),
             'mail_subject'      => sanitize_text_field( $input['mail_subject'] ?? '' ),
@@ -312,7 +315,8 @@ final class WC_PLZ_Reminder {
         $to      = $is_dev ? $s['test_email'] : $order->get_billing_email();
         $subject = $this->build_subject( $order, $is_dev );
         $body    = $this->build_body( $order, $is_dev );
-        $success = wp_mail( $to, $subject, $body );
+        $headers = ! empty( $s['reply_to'] ) ? [ 'Reply-To: ' . $s['reply_to'] ] : [];
+        $success = wp_mail( $to, $subject, $body, $headers );
 
         // Flag nur im Live-Modus und nur bei Erfolg setzen
         if ( $success && ! $is_dev ) {
@@ -346,7 +350,8 @@ final class WC_PLZ_Reminder {
         $to      = $is_dev ? $s['test_email'] : $order->get_billing_email();
         $subject = $this->build_subject( $order, $is_dev );
         $body    = $this->build_body( $order, $is_dev );
-        $success = wp_mail( $to, $subject, $body );
+        $headers = ! empty( $s['reply_to'] ) ? [ 'Reply-To: ' . $s['reply_to'] ] : [];
+        $success = wp_mail( $to, $subject, $body, $headers );
 
         // Bei Resend eines fehlgeschlagenen Live-Versands: Flag bei Erfolg setzen
         if ( $success && ! $is_dev && $order->get_meta( self::META_FLAG ) !== 'true' ) {
@@ -558,6 +563,13 @@ final class WC_PLZ_Reminder {
                         <td>
                             <input type="email" name="<?php echo esc_attr( self::OPT ); ?>[test_email]" value="<?php echo esc_attr( $s['test_email'] ); ?>" class="regular-text" />
                             <p class="description">Im Dev-Modus werden alle Mails an diese Adresse geschickt (nicht an den Kunden).</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Reply-To-Adresse</th>
+                        <td>
+                            <input type="email" name="<?php echo esc_attr( self::OPT ); ?>[reply_to]" value="<?php echo esc_attr( $s['reply_to'] ); ?>" class="regular-text" />
+                            <p class="description">Antworten auf Erinnerungsmails landen bei dieser Adresse. Leer lassen, um keinen Reply-To-Header zu setzen.</p>
                         </td>
                     </tr>
                     <tr>
