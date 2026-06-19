@@ -797,7 +797,6 @@ final class WC_PLZ_Filter {
             <?php if ( (int) $s['merkliste_enabled'] === 1 ) : ?>
             <button id="wc-plz-merkliste-btn"
                     class="wc-plz-merkliste-btn"
-                    style="display:none;"
                     aria-label="Merkliste öffnen"
                     type="button">
                 <span class="wc-plz-merkliste-btn__icon" aria-hidden="true">
