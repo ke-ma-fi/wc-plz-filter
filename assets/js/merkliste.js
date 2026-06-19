@@ -344,6 +344,87 @@
       .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
 
+  /* ── AJAX Add-to-Cart ──────────────────────── */
+
+  var CART_SVG_OK =
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+    'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">' +
+    '<polyline points="20 6 9 17 4 12"/></svg>';
+
+  var CART_SVG_ERR =
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+    'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">' +
+    '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+
+  function ajaxAddToCart(productId, btn) {
+    if (btn.disabled) return;
+    var origHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.style.opacity = "0.5";
+
+    var body = new URLSearchParams();
+    body.append("product_id", productId);
+    body.append("quantity", "1");
+
+    var xhr = new XMLHttpRequest();
+    xhr.open("POST", "/?wc-ajax=add_to_cart", true);
+    xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8");
+    xhr.timeout = 8000;
+
+    function reset(delay) {
+      setTimeout(function () {
+        btn.innerHTML = origHtml;
+        btn.disabled = false;
+        btn.style.opacity = "";
+      }, delay);
+    }
+
+    xhr.ontimeout = xhr.onerror = function () {
+      btn.innerHTML = CART_SVG_ERR;
+      btn.style.opacity = "1";
+      reset(1500);
+    };
+
+    xhr.onreadystatechange = function () {
+      if (xhr.readyState !== 4) return;
+
+      if (xhr.status < 200 || xhr.status >= 300) {
+        btn.innerHTML = CART_SVG_ERR;
+        btn.style.opacity = "1";
+        reset(1500);
+        return;
+      }
+
+      var res;
+      try { res = JSON.parse(xhr.responseText); } catch (e) { res = null; }
+
+      if (res && res.error) {
+        btn.innerHTML = CART_SVG_ERR;
+        btn.style.opacity = "1";
+        reset(1500);
+        return;
+      }
+
+      // Success
+      btn.innerHTML = CART_SVG_OK;
+      btn.style.opacity = "1";
+      reset(1800);
+
+      // Update WC cart fragments (mini-cart widget etc.)
+      if (res && res.fragments && window.jQuery) {
+        window.jQuery.each(res.fragments, function (key, value) {
+          window.jQuery(key).replaceWith(value);
+        });
+        window.jQuery(document.body).trigger("wc_fragments_refreshed");
+      }
+
+      // Trigger cart indicator refresh
+      document.dispatchEvent(new CustomEvent("wc-blocks_added_to_cart"));
+    };
+
+    xhr.send(body.toString());
+  }
+
   /* ── Event-Delegation ───────────────────────── */
 
   document.addEventListener("click", function (e) {
@@ -391,10 +472,7 @@
     if (cartBtn) {
       e.preventDefault();
       var productId = parseInt(cartBtn.dataset.productId, 10);
-      if (productId) {
-        // Standard WC add-to-cart URL — works on all WooCommerce installations
-        window.location.href = location.origin + "/?add-to-cart=" + productId;
-      }
+      if (productId) ajaxAddToCart(productId, cartBtn);
       return;
     }
 
