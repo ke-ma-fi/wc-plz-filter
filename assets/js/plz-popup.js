@@ -126,9 +126,7 @@
 
   function fadeIn(el, duration) {
     if (!el) return;
-    var wasHidden = el.style.display === "none";
-    el.style.removeProperty("display");
-    if (!wasHidden) return;
+    el.style.display = "";
     el.style.opacity = "0";
     el.style.transition = "opacity " + (duration || 200) + "ms ease";
     // Force reflow before transition
@@ -262,8 +260,7 @@
       }
       if (icon) icon.textContent = "\uD83D\uDCCD";
       if (info) info.textContent = D.badgeCtaText || "PLZ eingeben";
-      var groupCta = document.getElementById('wc-plz-widget-group');
-      fadeIn(groupCta || badge, 300);
+      fadeIn(badge, 300);
       return;
     }
 
@@ -313,8 +310,7 @@
         break;
     }
 
-    var group = document.getElementById('wc-plz-widget-group');
-    fadeIn(group || badge, 300);
+    fadeIn(badge, 300);
   }
 
   /* ── Hidden IDs Fetching ────────────────────── */
@@ -591,44 +587,4 @@
   } else {
     init();
   }
-
-  // Shared tile utilities — used by merkliste.js and cart-indicator.js
-  window.wcPlzTiles = {
-    getProductIdFromEl: function (el) {
-      if (!el) return null;
-      var classes = el.className || "";
-      var m = classes.match(/\bpdb(\d+)\b/);
-      if (m) return parseInt(m[1], 10);
-      m = classes.match(/\bpost-(\d+)\b/);
-      if (m) return parseInt(m[1], 10);
-      if (el.dataset && el.dataset.productId) return parseInt(el.dataset.productId, 10);
-      return null;
-    },
-    getAllTiles: function () {
-      var seen = new Set();
-      var results = [];
-      document.querySelectorAll("[class*='pdb']").forEach(function (el) {
-        if (/\bpdb\d+\b/.test(el.className) && !seen.has(el)) {
-          seen.add(el);
-          results.push(el);
-        }
-      });
-      document.querySelectorAll(".products li[class*='post-']").forEach(function (el) {
-        if (/\bpost-\d+\b/.test(el.className) && !seen.has(el)) {
-          seen.add(el);
-          results.push(el);
-        }
-      });
-      return results;
-    },
-    getImageWrapper: function (tile) {
-      var fig = tile.querySelector("figure");
-      if (fig) return fig;
-      var links = tile.querySelectorAll("a");
-      for (var i = 0; i < links.length; i++) {
-        if (links[i].querySelector("img")) return links[i];
-      }
-      return tile;
-    }
-  };
 })();
