@@ -7,7 +7,8 @@
    .woocommerce-page .single-product button (0,3,0). */
 
 html body #wc-plz-overlay button,
-html body button#wc-plz-badge {
+html body button#wc-plz-badge,
+html body button#wc-plz-merkliste-btn {
   -webkit-appearance: none !important;
   -moz-appearance: none !important;
   appearance: none !important;
@@ -346,12 +347,25 @@ html body #wc-plz-overlay button.wc-plz-btn--ghost:hover {
   }
 }
 
+/* ─── Widget Group: fixed-positioned container for badge + merkliste btn ── */
+
+#wc-plz-widget-group {
+  position: fixed;
+  z-index: 99999;
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  --wc-plz-offset-x: 0px;
+  --wc-plz-offset-y: 0px;
+  animation: wc-plz-badge-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
 html body button#wc-plz-badge,
 html body button#wc-plz-badge:hover,
 html body button#wc-plz-badge:focus,
 html body button#wc-plz-badge:focus-visible {
-  position: fixed !important;
-  z-index: 99999 !important;
+  position: static !important;
+  z-index: auto !important;
   display: flex !important;
   align-items: center;
   gap: 8px;
@@ -379,10 +393,6 @@ html body button#wc-plz-badge:focus-visible {
   height: auto !important;
   text-shadow: none !important;
   filter: none !important;
-}
-
-html body button#wc-plz-badge {
-  animation: wc-plz-badge-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 html body button#wc-plz-badge:active {
@@ -601,42 +611,31 @@ html body button#wc-plz-badge:active {
   display: none !important;
 }
 
-/* ─── Badge positions ────────────────────────── */
-
-/* Offset custom properties (set via inline style from admin) */
-.wc-plz-badge {
-  --wc-plz-offset-x: 0px;
-  --wc-plz-offset-y: 0px;
-}
+/* ─── Widget Group positions ─────────────────── */
 
 /* Corner positions */
-.wc-plz-badge--bottom-right {
+.wc-plz-widget-group--bottom-right {
   bottom: calc(24px - var(--wc-plz-offset-y));
   right: calc(24px - var(--wc-plz-offset-x));
 }
-.wc-plz-badge--bottom-left {
+.wc-plz-widget-group--bottom-left {
   bottom: calc(24px - var(--wc-plz-offset-y));
   left: calc(24px + var(--wc-plz-offset-x));
 }
-.wc-plz-badge--top-right {
+.wc-plz-widget-group--top-right {
   top: calc(24px + var(--wc-plz-offset-y));
   right: calc(24px - var(--wc-plz-offset-x));
 }
-.wc-plz-badge--top-left {
+.wc-plz-widget-group--top-left {
   top: calc(24px + var(--wc-plz-offset-y));
   left: calc(24px + var(--wc-plz-offset-x));
 }
 
 /* bottom-center */
-.wc-plz-badge--bottom-center {
+.wc-plz-widget-group--bottom-center {
   bottom: calc(24px - var(--wc-plz-offset-y));
   left: calc(50% + var(--wc-plz-offset-x));
   transform: translateX(-50%);
-}
-.wc-plz-badge--bottom-center:hover .wc-plz-badge__pill {
-  transform: scale(1.03);
-}
-.wc-plz-badge--bottom-center {
   animation: wc-plz-badge-in-bc 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 @keyframes wc-plz-badge-in-bc {
@@ -654,38 +653,46 @@ html body button#wc-plz-badge:active {
   }
 }
 
-/* left-center: horizontal by default */
-.wc-plz-badge--left-center {
+/* left-center */
+.wc-plz-widget-group--left-center {
   left: calc(24px + var(--wc-plz-offset-x));
   top: calc(50% + var(--wc-plz-offset-y));
   transform: translateY(-50%);
 }
-.wc-plz-badge--left-center:hover .wc-plz-badge__pill {
-  transform: scale(1.03);
-}
 
-/* right-center: horizontal by default */
-.wc-plz-badge--right-center {
+/* right-center */
+.wc-plz-widget-group--right-center {
   right: calc(24px - var(--wc-plz-offset-x));
   top: calc(50% + var(--wc-plz-offset-y));
   transform: translateY(-50%);
 }
-.wc-plz-badge--right-center:hover .wc-plz-badge__pill {
-  transform: scale(1.03);
+
+/* Rechts-ausgerichtete Positionen: Badge bleibt am rechten Anker,
+   Merkliste-Button erscheint links davon */
+.wc-plz-widget-group--bottom-right,
+.wc-plz-widget-group--top-right,
+.wc-plz-widget-group--right-center {
+  flex-direction: row-reverse;
 }
 
-/* ─── Rotation modifier (opt-in via admin) ───── */
+/* ─── Rotation modifier ───────────────────────── */
 
-.wc-plz-badge--rotated.wc-plz-badge--left-center {
+.wc-plz-widget-group--rotated.wc-plz-widget-group--left-center {
   transform: rotate(-90deg) translateX(50%);
   transform-origin: left center;
   animation: wc-plz-badge-in-left 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-.wc-plz-badge--rotated.wc-plz-badge--right-center {
+.wc-plz-widget-group--rotated.wc-plz-widget-group--right-center {
   transform: rotate(90deg) translateX(-50%);
   transform-origin: right center;
   animation: wc-plz-badge-in-right 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* ─── Shared tile utility (used by merkliste + cart-indicator) ─── */
+
+.wc-plz-tile-positioned {
+  position: relative !important;
 }
 
 /* ─── Responsive ─────────────────────────────── */
@@ -736,29 +743,29 @@ html body button#wc-plz-badge:active {
     height: 6px;
   }
 
-  .wc-plz-badge--bottom-right {
+  .wc-plz-widget-group--bottom-right {
     bottom: calc(16px - var(--wc-plz-offset-y));
     right: calc(16px - var(--wc-plz-offset-x));
   }
-  .wc-plz-badge--bottom-left {
+  .wc-plz-widget-group--bottom-left {
     bottom: calc(16px - var(--wc-plz-offset-y));
     left: calc(16px + var(--wc-plz-offset-x));
   }
-  .wc-plz-badge--top-right {
+  .wc-plz-widget-group--top-right {
     top: calc(16px + var(--wc-plz-offset-y));
     right: calc(16px - var(--wc-plz-offset-x));
   }
-  .wc-plz-badge--top-left {
+  .wc-plz-widget-group--top-left {
     top: calc(16px + var(--wc-plz-offset-y));
     left: calc(16px + var(--wc-plz-offset-x));
   }
-  .wc-plz-badge--bottom-center {
+  .wc-plz-widget-group--bottom-center {
     bottom: calc(16px - var(--wc-plz-offset-y));
   }
-  .wc-plz-badge--left-center {
+  .wc-plz-widget-group--left-center {
     left: calc(16px + var(--wc-plz-offset-x));
   }
-  .wc-plz-badge--right-center {
+  .wc-plz-widget-group--right-center {
     right: calc(16px - var(--wc-plz-offset-x));
   }
 
