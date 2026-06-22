@@ -26,23 +26,11 @@
   var getProductIdFromEl = tiles.getProductIdFromEl;
   var getAllTiles = tiles.getAllTiles;
 
-  /* ── Bild-Container finden ──────────────────── */
-
-  function getImageWrapper(tile) {
-    var fig = tile.querySelector("figure");
-    if (fig) return fig;
-    var links = tile.querySelectorAll("a");
-    for (var i = 0; i < links.length; i++) {
-      if (links[i].querySelector("img")) return links[i];
-    }
-    return tile;
-  }
-
   /* ── Indicators auf Kacheln anwenden ────────── */
 
   function applyIndicators(inCartIds) {
-    var tiles = getAllTiles();
-    tiles.forEach(function (tile) {
+    var allTiles = getAllTiles();
+    allTiles.forEach(function (tile) {
       var id = getProductIdFromEl(tile);
       if (!id) return;
 
@@ -51,7 +39,7 @@
 
       if (inCart) {
         if (!existing) {
-          var wrapper = getImageWrapper(tile);
+          var wrapper = tiles.getImageWrapper(tile);
           // Only read computed style when the wrapper hasn't been positioned yet.
           // Avoids a layout flush per tile on repeat calls.
           if (!wrapper._plzPositioned) {

@@ -74,19 +74,9 @@
     'M0 416c0 35.3 28.7 64 64 64l197.5 0c17 0 33.3-6.7 45.3-18.7L429.3 338.7c12-12 18.7-28.3 18.7-45.3L448 96c0-35.3-28.7-64-64-64L64 32C28.7 32 0 60.7 0 96L0 416z"/>' +
     "</svg>";
 
-  function getImageWrapper(tile) {
-    var fig = tile.querySelector("figure");
-    if (fig) return fig;
-    var links = tile.querySelectorAll("a");
-    for (var i = 0; i < links.length; i++) {
-      if (links[i].querySelector("img")) return links[i];
-    }
-    return tile;
-  }
-
   function ensureToggleIcon(tile, productId) {
     if (tile.querySelector(".wc-plz-mk-toggle")) return;
-    var wrapper = getImageWrapper(tile);
+    var wrapper = tiles.getImageWrapper(tile);
     if (getComputedStyle(wrapper).position === "static") wrapper.style.position = "relative";
     var btn = document.createElement("button");
     btn.className = "wc-plz-mk-toggle";
@@ -98,14 +88,15 @@
   }
 
   function applyTileIcons() {
-    var tiles = getAllTiles();
-    tiles.forEach(function (tile) {
+    var list = getMerkliste();
+    var allTiles = getAllTiles();
+    allTiles.forEach(function (tile) {
       var id = getProductIdFromEl(tile);
       if (!id) return;
       ensureToggleIcon(tile, id);
       var btn = tile.querySelector(".wc-plz-mk-toggle");
       if (!btn) return;
-      var active = isInMerkliste(id);
+      var active = list.indexOf(id) !== -1;
       btn.classList.toggle("wc-plz-mk-toggle--active", active);
       btn.setAttribute("aria-label", active ? "Von Merkliste entfernen" : "Zur Merkliste hinzufügen");
     });
@@ -310,6 +301,8 @@
     }
 
     fetchProductData(ids, function (products, fromCache) {
+      // Skip background-refresh write if the popover is already closed
+      if (!popoverOpen && !fromCache) return;
       if (!products) {
         if (!fromCache) {
           listEl.innerHTML = '<p class="wc-plz-merkliste-popover__empty">Produkte konnten nicht geladen werden.</p>';
@@ -326,7 +319,7 @@
         if (!prod) return "";
         var img  = (prod.images && prod.images[0] && prod.images[0].thumbnail) || "";
         var name = prod.name || "";
-        var price = (prod.prices && prod.prices.price_html) ? prod.prices.price_html : "";
+        var price = (prod.prices && prod.prices.price_html) ? sanitizePriceHtml(prod.prices.price_html) : "";
         return (
           '<div class="wc-plz-merkliste-item" data-product-id="' + id + '">' +
             (img ? '<img class="wc-plz-merkliste-item__img" src="' + escHtml(img) + '" alt="" loading="lazy">' : '') +
@@ -356,6 +349,31 @@
     return String(str)
       .replace(/&/g, "&amp;").replace(/</g, "&lt;")
       .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  // Sanitizes WC price_html: keeps formatting tags, strips everything else.
+  // price_html is WC-generated HTML (del/ins/span for sale prices) but may be
+  // filtered by third-party plugins that echo user-controlled content.
+  var PRICE_HTML_ALLOWED = { SPAN: 1, DEL: 1, INS: 1, STRONG: 1, EM: 1, BDI: 1, ABBR: 1, WBR: 1 };
+  function sanitizePriceHtml(html) {
+    var tmp = document.createElement("div");
+    tmp.innerHTML = String(html);
+    var nodes = tmp.querySelectorAll("*");
+    for (var i = nodes.length - 1; i >= 0; i--) {
+      var el = nodes[i];
+      if (!PRICE_HTML_ALLOWED[el.tagName]) {
+        el.parentNode.replaceChild(document.createTextNode(el.textContent), el);
+      } else {
+        var attrs = Array.prototype.slice.call(el.attributes);
+        for (var j = 0; j < attrs.length; j++) {
+          var attrName = attrs[j].name.toLowerCase();
+          if (attrName !== "class" && attrName !== "title") {
+            el.removeAttribute(attrs[j].name);
+          }
+        }
+      }
+    }
+    return tmp.innerHTML;
   }
 
   /* ── AJAX Add-to-Cart ──────────────────────── */

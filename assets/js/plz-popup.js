@@ -605,14 +605,30 @@
       return null;
     },
     getAllTiles: function () {
+      var seen = new Set();
       var results = [];
       document.querySelectorAll("[class*='pdb']").forEach(function (el) {
-        if (/\bpdb\d+\b/.test(el.className)) results.push(el);
+        if (/\bpdb\d+\b/.test(el.className) && !seen.has(el)) {
+          seen.add(el);
+          results.push(el);
+        }
       });
       document.querySelectorAll(".products li[class*='post-']").forEach(function (el) {
-        if (/\bpost-\d+\b/.test(el.className) && results.indexOf(el) === -1) results.push(el);
+        if (/\bpost-\d+\b/.test(el.className) && !seen.has(el)) {
+          seen.add(el);
+          results.push(el);
+        }
       });
       return results;
+    },
+    getImageWrapper: function (tile) {
+      var fig = tile.querySelector("figure");
+      if (fig) return fig;
+      var links = tile.querySelectorAll("a");
+      for (var i = 0; i < links.length; i++) {
+        if (links[i].querySelector("img")) return links[i];
+      }
+      return tile;
     }
   };
 })();
