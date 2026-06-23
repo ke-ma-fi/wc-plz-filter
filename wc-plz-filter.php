@@ -803,8 +803,8 @@ final class WC_PLZ_Filter {
     public function register_settings(): void {
         register_setting( 'wc_plz_filter_group', self::OPT, [
             'sanitize_callback' => [ $this, 'sanitize_settings' ],
-            'capability'        => self::MANAGE_CAP,
         ] );
+        add_filter( 'option_page_capability_wc_plz_filter_group', fn() => self::MANAGE_CAP );
     }
 
     public function sanitize_settings( array $input ): array {
