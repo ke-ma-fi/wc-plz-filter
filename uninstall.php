@@ -30,11 +30,19 @@ delete_option( 'wc_plz_updater_log' );
 // 3. Delete transients.
 delete_transient( 'wc_plz_local_codes' );
 
-// 4. Clear scheduled cron hooks.
+// 4. Remove custom capability from roles.
+foreach ( [ 'administrator', 'shop_manager' ] as $role_name ) {
+	$role = get_role( $role_name );
+	if ( $role ) {
+		$role->remove_cap( 'manage_plz_filter' );
+	}
+}
+
+// 5. Clear scheduled cron hooks.
 wp_clear_scheduled_hook( 'wc_plz_stats_cleanup' );
 wp_clear_scheduled_hook( 'wc_plz_reminder_scan' );
 
-// 5. Delete reminder options.
+// 6. Delete reminder options.
 delete_option( 'wc_plz_reminder' );
 delete_option( 'wc_plz_reminder_log' );
 delete_option( 'wc_plz_reminder_last_run' );

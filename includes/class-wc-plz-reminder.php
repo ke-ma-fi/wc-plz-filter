@@ -85,6 +85,7 @@ final class WC_PLZ_Reminder {
             self::OPT,
             [ 'sanitize_callback' => [ $this, 'sanitize_settings' ] ]
         );
+        add_filter( 'option_page_capability_wc_plz_reminder_group', fn() => 'manage_woocommerce' );
     }
 
     public function sanitize_settings( array $input ): array {
