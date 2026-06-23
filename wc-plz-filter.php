@@ -3,7 +3,7 @@
  * Plugin Name:  WC PLZ-Filter
  * Plugin URI:   https://fischer.digitale-theke.com
  * Description:  PLZ-Popup mit drei Modi (Abholung, Lokale Lieferung, Postversand). Filtert Produkte dynamisch nach WooCommerce-Versandklassen und füllt den Checkout vor.
- * Version:      2.8.2
+ * Version:      2.8.1
  * Author:       Metzgerei Fischer
  * License:      Proprietary
  * License URI:  https://fischer.digitale-theke.com
@@ -24,7 +24,7 @@ defined( 'ABSPATH' ) || exit;
 
 final class WC_PLZ_Filter {
 
-    const VERSION         = '2.8.2';
+    const VERSION         = '2.8.1';
     const COOKIE          = 'wc_delivery_mode';
     const OPT             = 'wc_plz_filter_v2';
     const CACHE           = 'wc_plz_local_codes';
@@ -80,7 +80,6 @@ final class WC_PLZ_Filter {
         add_action( 'admin_menu', [ $this, 'admin_menu' ] );
         add_action( 'admin_init', [ $this, 'register_settings' ] );
         add_action( 'admin_init', [ $this, 'handle_admin_reset' ] );
-        add_action( 'init', [ $this, 'maybe_run_upgrade' ] );
 
         add_action( 'woocommerce_after_shipping_zone_object_save', fn() => delete_transient( self::CACHE ) );
         add_action( 'woocommerce_delete_shipping_zone', fn() => delete_transient( self::CACHE ) );
@@ -805,26 +804,6 @@ final class WC_PLZ_Filter {
         register_setting( 'wc_plz_filter_group', self::OPT, [ 'sanitize_callback' => [ $this, 'sanitize_settings' ] ] );
     }
 
-    public function maybe_run_upgrade(): void {
-        if ( get_option( 'wc_plz_filter_version' ) === self::VERSION ) {
-            return;
-        }
-        $this->grant_caps();
-        update_option( 'wc_plz_filter_version', self::VERSION );
-    }
-
-    public function grant_caps(): void {
-        foreach ( wp_roles()->roles as $role_name => $role_data ) {
-            $caps = $role_data['capabilities'] ?? [];
-            if ( ! empty( $caps['administrator'] ) || ! empty( $caps['manage_woocommerce'] ) || ! empty( $caps['view_woocommerce_reports'] ) ) {
-                $role = get_role( $role_name );
-                if ( $role ) {
-                    $role->add_cap( self::MANAGE_CAP );
-                }
-            }
-        }
-    }
-
     public function sanitize_settings( array $input ): array {
         delete_transient( self::CACHE );
 
@@ -1066,7 +1045,14 @@ register_activation_hook( __FILE__, function () {
     require_once plugin_dir_path( __FILE__ ) . 'includes/class-wc-plz-reminder.php';
     WC_PLZ_Reminder::activate();
 
-    WC_PLZ_Filter::instance()->grant_caps();
+    // Capability an Rollen vergeben, die standardmäßig Zugriff haben sollen.
+    // Einzelne Benutzer können zusätzlich über "Benutzer > Bearbeiten" berechtigt werden.
+    foreach ( [ 'administrator', 'shop_manager' ] as $role_name ) {
+        $role = get_role( $role_name );
+        if ( $role ) {
+            $role->add_cap( WC_PLZ_Filter::MANAGE_CAP );
+        }
+    }
 } );
 
 register_deactivation_hook( __FILE__, function () {
@@ -1075,7 +1061,7 @@ register_deactivation_hook( __FILE__, function () {
     require_once plugin_dir_path( __FILE__ ) . 'includes/class-wc-plz-reminder.php';
     WC_PLZ_Reminder::deactivate();
 
-    foreach ( wp_roles()->roles as $role_name => $role_data ) {
+    foreach ( [ 'administrator', 'shop_manager' ] as $role_name ) {
         $role = get_role( $role_name );
         if ( $role ) {
             $role->remove_cap( WC_PLZ_Filter::MANAGE_CAP );
