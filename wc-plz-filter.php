@@ -3,7 +3,7 @@
  * Plugin Name:  WC PLZ-Filter
  * Plugin URI:   https://fischer.digitale-theke.com
  * Description:  PLZ-Popup mit drei Modi (Abholung, Lokale Lieferung, Postversand). Filtert Produkte dynamisch nach WooCommerce-Versandklassen und füllt den Checkout vor.
- * Version:      2.8.0
+ * Version:      2.8.1
  * Author:       Metzgerei Fischer
  * License:      Proprietary
  * License URI:  https://fischer.digitale-theke.com
@@ -24,11 +24,12 @@ defined( 'ABSPATH' ) || exit;
 
 final class WC_PLZ_Filter {
 
-    const VERSION         = '2.8.0';
+    const VERSION         = '2.8.1';
     const COOKIE          = 'wc_delivery_mode';
     const OPT             = 'wc_plz_filter_v2';
     const CACHE           = 'wc_plz_local_codes';
     const HIDDEN_VERSION  = 'wc_plz_hidden_version';
+    const MANAGE_CAP      = 'manage_plz_filter';
 
     private static ?self $instance = null;
     private ?array $settings_cache = null;
@@ -777,7 +778,7 @@ final class WC_PLZ_Filter {
         if ( ! isset( $_POST['wc_plz_reset'] ) ) {
             return;
         }
-        if ( ! current_user_can( 'manage_woocommerce' ) ) {
+        if ( ! current_user_can( self::MANAGE_CAP ) ) {
             return;
         }
         check_admin_referer( 'wc_plz_reset' );
@@ -796,7 +797,7 @@ final class WC_PLZ_Filter {
     }
 
     public function admin_menu(): void {
-        add_submenu_page( 'woocommerce', 'PLZ-Filter', 'PLZ-Filter', 'manage_woocommerce', 'wc-plz-filter', [ $this, 'render_admin' ] );
+        add_submenu_page( 'woocommerce', 'PLZ-Filter', 'PLZ-Filter', self::MANAGE_CAP, 'wc-plz-filter', [ $this, 'render_admin' ] );
     }
 
     public function register_settings(): void {
@@ -831,7 +832,7 @@ final class WC_PLZ_Filter {
     }
 
     public function render_admin(): void {
-        if ( ! current_user_can( 'manage_woocommerce' ) ) {
+        if ( ! current_user_can( self::MANAGE_CAP ) ) {
             return;
         }
 
@@ -1043,6 +1044,15 @@ register_activation_hook( __FILE__, function () {
 
     require_once plugin_dir_path( __FILE__ ) . 'includes/class-wc-plz-reminder.php';
     WC_PLZ_Reminder::activate();
+
+    // Capability an Rollen vergeben, die standardmäßig Zugriff haben sollen.
+    // Einzelne Benutzer können zusätzlich über "Benutzer > Bearbeiten" berechtigt werden.
+    foreach ( [ 'administrator', 'shop_manager' ] as $role_name ) {
+        $role = get_role( $role_name );
+        if ( $role ) {
+            $role->add_cap( WC_PLZ_Filter::MANAGE_CAP );
+        }
+    }
 } );
 
 register_deactivation_hook( __FILE__, function () {
@@ -1050,4 +1060,11 @@ register_deactivation_hook( __FILE__, function () {
 
     require_once plugin_dir_path( __FILE__ ) . 'includes/class-wc-plz-reminder.php';
     WC_PLZ_Reminder::deactivate();
+
+    foreach ( [ 'administrator', 'shop_manager' ] as $role_name ) {
+        $role = get_role( $role_name );
+        if ( $role ) {
+            $role->remove_cap( WC_PLZ_Filter::MANAGE_CAP );
+        }
+    }
 } );
