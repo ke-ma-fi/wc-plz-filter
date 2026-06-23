@@ -16,6 +16,8 @@ defined( 'ABSPATH' ) || exit;
 
 final class WC_PLZ_Reminder {
 
+    use WC_PLZ_Singleton;
+
     const OPT       = 'wc_plz_reminder';
     const OPT_LOG   = 'wc_plz_reminder_log';
     const CRON_HOOK = 'wc_plz_reminder_scan';
@@ -24,12 +26,7 @@ final class WC_PLZ_Reminder {
     const LOCK_KEY  = 'wc_plz_reminder_running';
     const MAX_LOG   = 50;
 
-    private static ?self $instance = null;
     private ?array $settings_cache = null;
-
-    public static function instance(): self {
-        return self::$instance ??= new self();
-    }
 
     private function __construct() {
         add_action( 'admin_menu',  [ $this, 'register_admin_menu' ] );
@@ -85,7 +82,7 @@ final class WC_PLZ_Reminder {
             self::OPT,
             [ 'sanitize_callback' => [ $this, 'sanitize_settings' ] ]
         );
-        add_filter( 'option_page_capability_wc_plz_reminder_group', fn() => 'manage_woocommerce' );
+        add_filter( 'option_page_capability_wc_plz_reminder_group', fn() => WC_PLZ_Filter::MANAGE_CAP );
     }
 
     public function sanitize_settings( array $input ): array {
@@ -393,7 +390,7 @@ final class WC_PLZ_Reminder {
             'woocommerce',
             'Zahlungs-Erinnerung',
             'Zahlungs-Erinnerung',
-            'manage_woocommerce',
+            WC_PLZ_Filter::MANAGE_CAP,
             'wc-plz-reminder',
             [ $this, 'render_admin' ]
         );
@@ -402,7 +399,7 @@ final class WC_PLZ_Reminder {
     /* ── Admin-Actions ───────────────────────────── */
 
     public function handle_admin_actions(): void {
-        if ( ! current_user_can( 'manage_woocommerce' ) ) {
+        if ( ! current_user_can( WC_PLZ_Filter::MANAGE_CAP ) ) {
             return;
         }
 
@@ -464,7 +461,7 @@ final class WC_PLZ_Reminder {
     /* ── Admin-Tab HTML ──────────────────────────── */
 
     public function render_admin(): void {
-        if ( ! current_user_can( 'manage_woocommerce' ) ) {
+        if ( ! current_user_can( WC_PLZ_Filter::MANAGE_CAP ) ) {
             return;
         }
 

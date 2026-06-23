@@ -9,15 +9,11 @@ defined( 'ABSPATH' ) || exit;
 
 final class WC_PLZ_Updater {
 
+    use WC_PLZ_Singleton;
+
     const OPT_REPO   = 'wc_plz_updater_repo';
     const OPT_SECRET = 'wc_plz_updater_secret';
     const OPT_LOG    = 'wc_plz_updater_log';
-
-    private static ?self $instance = null;
-
-    public static function instance(): self {
-        return self::$instance ??= new self();
-    }
 
     private function __construct() {
         add_action( 'rest_api_init',  [ $this, 'register_rest_routes' ] );

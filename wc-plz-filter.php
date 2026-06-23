@@ -3,7 +3,7 @@
  * Plugin Name:  WC PLZ-Filter
  * Plugin URI:   https://fischer.digitale-theke.com
  * Description:  PLZ-Popup mit drei Modi (Abholung, Lokale Lieferung, Postversand). Filtert Produkte dynamisch nach WooCommerce-Versandklassen und füllt den Checkout vor.
- * Version:      2.8.1
+ * Version:      2.8.2
  * Author:       Metzgerei Fischer
  * License:      Proprietary
  * License URI:  https://fischer.digitale-theke.com
@@ -22,23 +22,22 @@
 
 defined( 'ABSPATH' ) || exit;
 
+require_once plugin_dir_path( __FILE__ ) . 'includes/trait-wc-plz-singleton.php';
+
 final class WC_PLZ_Filter {
 
-    const VERSION         = '2.8.1';
+    use WC_PLZ_Singleton;
+
+    const VERSION         = '2.8.2';
     const COOKIE          = 'wc_delivery_mode';
     const OPT             = 'wc_plz_filter_v2';
     const CACHE           = 'wc_plz_local_codes';
     const HIDDEN_VERSION  = 'wc_plz_hidden_version';
     const MANAGE_CAP      = 'manage_plz_filter';
 
-    private static ?self $instance = null;
     private ?array $settings_cache = null;
     private ?WC_PLZ_Stats   $stats   = null;
     private ?WC_PLZ_Updater $updater = null;
-
-    public static function instance(): self {
-        return self::$instance ??= new self();
-    }
 
     private function __construct() {
         add_action( 'plugins_loaded', [ $this, 'init' ] );

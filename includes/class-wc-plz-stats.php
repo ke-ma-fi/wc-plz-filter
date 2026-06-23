@@ -16,17 +16,13 @@ defined( 'ABSPATH' ) || exit;
 
 final class WC_PLZ_Stats {
 
+    use WC_PLZ_Singleton;
+
     const DB_VERSION  = '1';
     const TABLE       = 'wc_plz_events';
     const CACHE_TTL   = 300; // 5 Minuten
     const OPT_CLEANUP = 'wc_plz_stats_cleanup';
     const CRON_HOOK   = 'wc_plz_stats_cleanup';
-
-    private static ?self $instance = null;
-
-    public static function instance(): self {
-        return self::$instance ??= new self();
-    }
 
     public static function activate(): void {
         global $wpdb;
@@ -97,7 +93,7 @@ final class WC_PLZ_Stats {
     /* ── Event loggen ────────────────────────────── */
 
     public function log_event( string $plz, string $mode ): void {
-        if ( is_user_logged_in() && current_user_can( 'manage_woocommerce' ) ) {
+        if ( is_user_logged_in() && current_user_can( WC_PLZ_Filter::MANAGE_CAP ) ) {
             return;
         }
 
@@ -213,7 +209,7 @@ final class WC_PLZ_Stats {
             'methods'             => WP_REST_Server::READABLE,
             'callback'            => [ $this, 'rest_get_stats' ],
             'permission_callback' => function () {
-                return current_user_can( 'manage_woocommerce' );
+                return current_user_can( WC_PLZ_Filter::MANAGE_CAP );
             },
             'args' => [
                 'from' => [
@@ -382,7 +378,7 @@ final class WC_PLZ_Stats {
         if ( ! isset( $_POST['wc_plz_stats_reset'] ) ) {
             return;
         }
-        if ( ! current_user_can( 'manage_woocommerce' ) ) {
+        if ( ! current_user_can( WC_PLZ_Filter::MANAGE_CAP ) ) {
             return;
         }
         check_admin_referer( 'wc_plz_stats_reset' );
@@ -401,7 +397,7 @@ final class WC_PLZ_Stats {
         if ( ! isset( $_POST['wc_plz_cleanup_settings'] ) ) {
             return;
         }
-        if ( ! current_user_can( 'manage_woocommerce' ) ) {
+        if ( ! current_user_can( WC_PLZ_Filter::MANAGE_CAP ) ) {
             return;
         }
         check_admin_referer( 'wc_plz_cleanup_settings' );
