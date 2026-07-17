@@ -381,6 +381,12 @@ html body button#wc-plz-badge:focus-visible {
   filter: none !important;
 }
 
+html body button#wc-plz-badge:hover,
+html body button#wc-plz-badge:focus,
+html body button#wc-plz-badge:focus-visible {
+  z-index: 2147483646 !important;
+}
+
 html body button#wc-plz-badge {
   animation: wc-plz-badge-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
@@ -477,7 +483,7 @@ html body button#wc-plz-badge:active {
 
 .wc-plz-badge__tooltip {
   position: absolute;
-  z-index: 1;
+  z-index: 2147483647;
   background: #333;
   color: #fff;
   font-size: 0.78rem;
