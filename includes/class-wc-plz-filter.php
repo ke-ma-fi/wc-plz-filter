@@ -53,18 +53,20 @@ final class WC_PLZ_Filter {
         require_once WC_PLZ_FILTER_DIR . 'includes/class-wc-plz-reminder.php';
         $reminder = WC_PLZ_Reminder::instance();
 
-        require_once WC_PLZ_FILTER_DIR . 'includes/admin/interface-woohoo-module.php';
-        require_once WC_PLZ_FILTER_DIR . 'includes/admin/class-woohoo-admin-page.php';
-        require_once WC_PLZ_FILTER_DIR . 'includes/admin/class-woohoo-module-delivery.php';
-        require_once WC_PLZ_FILTER_DIR . 'includes/admin/class-woohoo-module-stats.php';
-        require_once WC_PLZ_FILTER_DIR . 'includes/admin/class-woohoo-module-updater.php';
-        require_once WC_PLZ_FILTER_DIR . 'includes/admin/class-woohoo-module-reminder.php';
+        if ( is_admin() ) {
+            require_once WC_PLZ_FILTER_DIR . 'includes/admin/interface-woohoo-module.php';
+            require_once WC_PLZ_FILTER_DIR . 'includes/admin/class-woohoo-admin-page.php';
+            require_once WC_PLZ_FILTER_DIR . 'includes/admin/class-woohoo-module-delivery.php';
+            require_once WC_PLZ_FILTER_DIR . 'includes/admin/class-woohoo-module-stats.php';
+            require_once WC_PLZ_FILTER_DIR . 'includes/admin/class-woohoo-module-updater.php';
+            require_once WC_PLZ_FILTER_DIR . 'includes/admin/class-woohoo-module-reminder.php';
 
-        $admin_page = Woohoo_Admin_Page::instance();
-        $admin_page->register_module( new Woohoo_Module_Delivery( $this ) );
-        $admin_page->register_module( new Woohoo_Module_Stats( $this->stats ) );
-        $admin_page->register_module( new Woohoo_Module_Updater( $this->updater ) );
-        $admin_page->register_module( new Woohoo_Module_Reminder( $reminder ) );
+            $admin_page = Woohoo_Admin_Page::instance();
+            $admin_page->register_module( new Woohoo_Module_Delivery( $this ) );
+            $admin_page->register_module( new Woohoo_Module_Stats( $this->stats ) );
+            $admin_page->register_module( new Woohoo_Module_Updater( $this->updater ) );
+            $admin_page->register_module( new Woohoo_Module_Reminder( $reminder ) );
+        }
 
         add_action( 'admin_init', [ $this, 'register_settings' ] );
         add_action( 'admin_init', [ $this, 'handle_admin_reset' ] );
