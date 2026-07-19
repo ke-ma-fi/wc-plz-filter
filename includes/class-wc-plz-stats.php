@@ -262,9 +262,8 @@ final class WC_PLZ_Stats {
         $data         = $this->get_aggregated( $from, $to );
         $rows         = $data['rows'];
         $total        = $data['total'];
-        $admin_url    = admin_url( 'admin.php?page=wc-plz-filter' );
+        $admin_url    = Woohoo_Admin_Page::tab_url( 'stats' );
         ?>
-        <hr />
         <h2>PLZ-Statistik</h2>
 
         <?php if ( $reset_done ) : ?>
@@ -307,7 +306,8 @@ final class WC_PLZ_Stats {
 
         <h3>Auswertung</h3>
         <form method="get" action="<?php echo esc_url( $admin_url ); ?>">
-            <input type="hidden" name="page" value="wc-plz-filter" />
+            <input type="hidden" name="page" value="woohoo" />
+            <input type="hidden" name="tab" value="stats" />
             <label>
                 Von: <input type="date" name="stats_from" value="<?php echo esc_attr( $from ); ?>" />
             </label>
@@ -387,7 +387,7 @@ final class WC_PLZ_Stats {
         $wpdb->query( "DELETE FROM `" . $this->table_name() . "`" );
         $this->bump_cache();
 
-        wp_safe_redirect( add_query_arg( 'wc_plz_stats_reset_done', '1', admin_url( 'admin.php?page=wc-plz-filter' ) ) );
+        wp_safe_redirect( add_query_arg( 'wc_plz_stats_reset_done', '1', Woohoo_Admin_Page::tab_url( 'stats' ) ) );
         exit;
     }
 
@@ -407,7 +407,7 @@ final class WC_PLZ_Stats {
             'max_rows' => max( 100, (int) ( $_POST['max_rows'] ?? 100000 ) ),
         ] );
 
-        wp_safe_redirect( add_query_arg( 'wc_plz_cleanup_saved', '1', admin_url( 'admin.php?page=wc-plz-filter' ) ) );
+        wp_safe_redirect( add_query_arg( 'wc_plz_cleanup_saved', '1', Woohoo_Admin_Page::tab_url( 'stats' ) ) );
         exit;
     }
 }

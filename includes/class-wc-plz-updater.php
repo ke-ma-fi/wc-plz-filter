@@ -153,7 +153,7 @@ final class WC_PLZ_Updater {
 
         if ( $this->get_repo() === '' ) {
             wp_safe_redirect( add_query_arg( 'plz_update', 'error_not_configured',
-                admin_url( 'admin.php?page=wc-plz-filter' ) ) );
+                Woohoo_Admin_Page::tab_url( 'updater' ) ) );
             exit;
         }
 
@@ -161,7 +161,7 @@ final class WC_PLZ_Updater {
         $status = $result['success'] ? 'success' : 'error';
 
         wp_safe_redirect( add_query_arg( 'plz_update', $status,
-            admin_url( 'admin.php?page=wc-plz-filter' ) ) );
+            Woohoo_Admin_Page::tab_url( 'updater' ) ) );
         exit;
     }
 
@@ -173,7 +173,7 @@ final class WC_PLZ_Updater {
         check_admin_referer( 'wc_plz_regenerate_secret' );
         update_option( self::OPT_SECRET, bin2hex( random_bytes( 32 ) ) );
 
-        wp_safe_redirect( admin_url( 'admin.php?page=wc-plz-filter' ) );
+        wp_safe_redirect( Woohoo_Admin_Page::tab_url( 'updater' ) );
         exit;
     }
 
@@ -184,7 +184,7 @@ final class WC_PLZ_Updater {
         }
 
         $screen = get_current_screen();
-        if ( ! $screen || $screen->id !== 'woocommerce_page_wc-plz-filter' ) {
+        if ( ! $screen || $screen->id !== 'woocommerce_page_woohoo' ) {
             return;
         }
 
@@ -221,7 +221,6 @@ final class WC_PLZ_Updater {
         $log    = $this->get_log();
         $last   = $log[0] ?? null;
         ?>
-        <hr />
         <h2>Auto-Update</h2>
 
         <table class="form-table" style="max-width:680px;">
