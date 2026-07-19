@@ -1,6 +1,8 @@
-# WC PLZ-Filter
+# DT Woohoo
 
 A lightweight WooCommerce plugin for German online shops that presents customers with a **postal-code (PLZ) popup** on their first visit and lets them pick a delivery mode. Based on their choice, the shop dynamically filters products and pre-fills the checkout.
+
+> Internally the plugin folder, classes, options, capability, AJAX actions, and REST namespace still use the legacy `wc-plz-filter` / `WC_PLZ_*` naming — only the plugin's display name and admin UI are branded "DT Woohoo". See [NAMING.md](NAMING.md) for why, and what a full rename would require.
 
 ---
 
@@ -34,12 +36,12 @@ A lightweight WooCommerce plugin for German online shops that presents customers
 
 1. Download or clone this repository.
 2. Copy the plugin folder (or upload `wc-plz-filter.zip`) to `wp-content/plugins/`.
-3. Activate **WC PLZ-Filter** in *Plugins → Installed Plugins*.
-4. Go to **WooCommerce → PLZ-Filter** to configure the plugin.
+3. Activate **DT Woohoo** in *Plugins → Installed Plugins*.
+4. Go to **WooCommerce → DT Woohoo → Liefermodus** to configure the plugin.
 
 ## Configuration
 
-Navigate to **WooCommerce → PLZ-Filter** in the WordPress admin:
+Navigate to **WooCommerce → DT Woohoo → Liefermodus** in the WordPress admin:
 
 | Setting | Description |
 |---------|-------------|
@@ -97,7 +99,7 @@ The plugin logs each confirmed mode selection to a dedicated database table (`wp
 
 ### Admin dashboard
 
-The statistics section under **WooCommerce → PLZ-Filter** shows:
+The **Statistik** tab under **WooCommerce → DT Woohoo** shows:
 
 - Aggregated table: PLZ · Zone · Selections · Last seen
 - Date range filter (from / to)
@@ -140,7 +142,7 @@ curl -u ck_xxx:cs_xxx \
 
 ## Payment Reminder
 
-Navigate to **WooCommerce → Zahlungs-Erinnerung** to configure the automatic payment reminder.
+Navigate to **WooCommerce → DT Woohoo → Zahlungs-Erinnerung** to configure the automatic payment reminder.
 
 ### How it works
 
@@ -187,7 +189,7 @@ The last 50 sent reminders are shown in a log table under the settings. Each ent
 
 ## Developer Reset
 
-The **Entwickler-Reset** button under WooCommerce → PLZ-Filter clears your browser's delivery-mode cookie and the WooCommerce customer session, so the popup reappears on the next page load. Useful for testing without manually clearing cookies.
+The **Entwickler-Reset** button under WooCommerce → DT Woohoo → Liefermodus clears your browser's delivery-mode cookie and the WooCommerce customer session, so the popup reappears on the next page load. Useful for testing without manually clearing cookies.
 
 ## Uninstall
 
