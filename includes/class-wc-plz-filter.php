@@ -53,7 +53,7 @@ final class WC_PLZ_Filter {
         require_once WC_PLZ_FILTER_DIR . 'includes/class-wc-plz-reminder.php';
         $reminder = WC_PLZ_Reminder::instance();
 
-        if ( is_admin() ) {
+        if ( is_admin() && ! wp_doing_ajax() ) {
             require_once WC_PLZ_FILTER_DIR . 'includes/admin/interface-woohoo-module.php';
             require_once WC_PLZ_FILTER_DIR . 'includes/admin/class-woohoo-admin-page.php';
             require_once WC_PLZ_FILTER_DIR . 'includes/admin/class-woohoo-module-delivery.php';
