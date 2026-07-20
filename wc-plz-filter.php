@@ -96,7 +96,6 @@ final class WC_PLZ_Filter {
         add_action( 'woocommerce_cart_loaded_from_session',  [ $this, 'remove_excluded_cart_items' ] );
         add_action( 'woocommerce_check_cart_items',          [ $this, 'validate_cart_items' ] );
         add_action( 'woocommerce_before_checkout_form',      [ $this, 'checkout_min_order_notice' ] );
-        add_action( 'woocommerce_before_checkout_form',      [ $this, 'checkout_shipping_notice_initial' ] );
         add_action( 'woocommerce_checkout_update_order_review', [ $this, 'checkout_shipping_notice_live' ] );
         add_action( 'template_redirect',                    [ $this, 'redirect_excluded_single' ] );
         add_action( 'wp_footer',                            [ $this, 'maybe_show_blocked_alert' ] );
@@ -560,23 +559,15 @@ final class WC_PLZ_Filter {
      * Live-Update während Checkout-AJAX-Refresh (z.B. Versandart-Wechsel).
      * wc_add_notice(), NICHT wc_print_notice() — WC_AJAX::update_order_review()
      * sammelt per wc_get_notices() ein und rendert sie als "messages"-Fragment.
+     * checkout.js triggert diesen Refresh auch automatisch direkt nach dem initialen
+     * Laden, daher genügt dieser eine Pfad — ein zusätzlicher Initial-Print (wie bei
+     * checkout_min_order_notice()) würde beim Wechsel auf Abholung nicht mit entfernt,
+     * da er außerhalb des von checkout.js verwalteten Notice-Bereichs liegt.
      */
     public function checkout_shipping_notice_live(): void {
         $notice = $this->get_incompatible_shipping_notice();
         if ( $notice !== '' ) {
             wc_add_notice( $notice, 'notice' );
-        }
-    }
-
-    /**
-     * Initialer Seiten-Load: wc_print_notice() (sofortiges Echo), da wc_print_notices()
-     * bereits VOR dem woocommerce_before_checkout_form-Hook läuft — siehe
-     * checkout_min_order_notice() für das gleiche, bereits bewährte Pattern.
-     */
-    public function checkout_shipping_notice_initial(): void {
-        $notice = $this->get_incompatible_shipping_notice();
-        if ( $notice !== '' ) {
-            wc_print_notice( $notice, 'notice' );
         }
     }
 
