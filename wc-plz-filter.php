@@ -549,7 +549,7 @@ final class WC_PLZ_Filter {
         }
 
         return sprintf(
-            'Für den Postversand nicht verfügbar: %s. Bestellung nur zur Abholung möglich.Möchten Sie stattdessen mit Postversand bestellen und die Produkte entfernen? <a href="#" class="wc-plz-force-post" style="text-decoration:underline;font-weight:700;">Hier klicken.</a>',
+            'Für den Postversand nicht verfügbar: %s. Bestellung nur zur Abholung möglich. Möchten Sie stattdessen mit Postversand bestellen und die Produkte entfernen? <a href="#" class="wc-plz-force-post" style="text-decoration:underline;font-weight:700;">Hier klicken.</a>',
             implode( ', ', array_map( 'esc_html', $blocked ) )
         );
     }
