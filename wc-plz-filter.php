@@ -3,7 +3,7 @@
  * Plugin Name:  WC PLZ-Filter
  * Plugin URI:   https://fischer.digitale-theke.com
  * Description:  PLZ-Popup mit drei Modi (Abholung, Lokale Lieferung, Postversand). Filtert Produkte dynamisch nach WooCommerce-Versandklassen und füllt den Checkout vor.
- * Version:      2.8.4
+ * Version:      2.8.5
  * Author:       Metzgerei Fischer
  * License:      Proprietary
  * License URI:  https://fischer.digitale-theke.com
@@ -28,7 +28,7 @@ final class WC_PLZ_Filter {
 
     use WC_PLZ_Singleton;
 
-    const VERSION         = '2.8.4';
+    const VERSION         = '2.8.5';
     const COOKIE          = 'wc_delivery_mode';
     const OPT             = 'wc_plz_filter_v2';
     const CACHE           = 'wc_plz_local_codes';
@@ -549,7 +549,7 @@ final class WC_PLZ_Filter {
         }
 
         return sprintf(
-            'Für den Postversand nicht verfügbar: %s. Möchten Sie trotzdem mit Postversand bestellen und die Produkte entfernen? <a href="#" class="wc-plz-force-post" style="text-decoration:underline;font-weight:700;">Hier klicken.</a>',
+            'Für den Postversand nicht verfügbar: %s. Bestellung nur zur Abholung möglich.Möchten Sie stattdessen mit Postversand bestellen und die Produkte entfernen? <a href="#" class="wc-plz-force-post" style="text-decoration:underline;font-weight:700;">Hier klicken.</a>',
             implode( ', ', array_map( 'esc_html', $blocked ) )
         );
     }
@@ -749,11 +749,16 @@ final class WC_PLZ_Filter {
         ] );
     }
 
+    /**
+     * Volles Rocket/Cloudflare-Ausschluss-Set (analog zu print_head_hide_script()):
+     * data-nowprocket allein schützt nur vor Minify/Combine, nicht vor
+     * "Delay JavaScript Execution" — dafür braucht es data-no-defer zusätzlich.
+     */
     public function add_nowprocket_attr( string $tag, string $handle ): string {
         if ( 'wc-plz-filter' !== $handle ) {
             return $tag;
         }
-        return str_replace( '<script ', '<script data-nowprocket ', $tag );
+        return str_replace( '<script ', '<script data-no-optimize="1" data-no-minify="1" data-no-defer="1" data-nowprocket data-cfasync="false" ', $tag );
     }
 
     /**
