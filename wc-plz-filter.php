@@ -3,7 +3,7 @@
  * Plugin Name:  WC PLZ-Filter
  * Plugin URI:   https://fischer.digitale-theke.com
  * Description:  PLZ-Popup mit drei Modi (Abholung, Lokale Lieferung, Postversand). Filtert Produkte dynamisch nach WooCommerce-Versandklassen und füllt den Checkout vor.
- * Version:      2.8.3
+ * Version:      2.8.4
  * Author:       Metzgerei Fischer
  * License:      Proprietary
  * License URI:  https://fischer.digitale-theke.com
@@ -28,7 +28,7 @@ final class WC_PLZ_Filter {
 
     use WC_PLZ_Singleton;
 
-    const VERSION         = '2.8.3';
+    const VERSION         = '2.8.4';
     const COOKIE          = 'wc_delivery_mode';
     const OPT             = 'wc_plz_filter_v2';
     const CACHE           = 'wc_plz_local_codes';
@@ -96,6 +96,8 @@ final class WC_PLZ_Filter {
         add_action( 'woocommerce_cart_loaded_from_session',  [ $this, 'remove_excluded_cart_items' ] );
         add_action( 'woocommerce_check_cart_items',          [ $this, 'validate_cart_items' ] );
         add_action( 'woocommerce_before_checkout_form',      [ $this, 'checkout_min_order_notice' ] );
+        add_action( 'woocommerce_before_checkout_form',      [ $this, 'checkout_shipping_notice_initial' ] );
+        add_action( 'woocommerce_checkout_update_order_review', [ $this, 'checkout_shipping_notice_live' ] );
         add_action( 'template_redirect',                    [ $this, 'redirect_excluded_single' ] );
         add_action( 'wp_footer',                            [ $this, 'maybe_show_blocked_alert' ] );
 
@@ -477,6 +479,103 @@ final class WC_PLZ_Filter {
                 ),
                 'notice'
             );
+        }
+    }
+
+    /**
+     * Reale Checkout-PLZ (aus WC()->customer, von WooCommerce bereits aus den geposteten
+     * Checkout-Feldern synchronisiert) statt unserem Popup-Cookie — Fallback für Kunden,
+     * die das PLZ-Popup nie geöffnet haben.
+     */
+    private function get_checkout_postcode(): string {
+        $plz = (string) WC()->customer->get_shipping_postcode();
+        if ( $plz === '' ) {
+            $plz = (string) WC()->customer->get_billing_postcode();
+        }
+        return preg_replace( '/\D/', '', $plz );
+    }
+
+    /**
+     * Ermittelt den Hinweistext (leer = kein Hinweis): Radius entscheidet, nicht die
+     * gewählte Versandart-ID. Grund: "Lokale Lieferung" ist in WooCommerce oft nur eine
+     * ganz normale Flat-Rate-Instanz in einer Zone — von der Postversand-Flat-Rate anhand
+     * der Methoden-ID nicht unterscheidbar. Einzige Ausnahme ist Abholung (Pickup), da dort
+     * der Radius irrelevant ist. Rein informativ — löscht nichts, blockiert nichts.
+     * Nur ein Fallback für Kunden ohne Popup-Interaktion: Sobald unser Cookie eine
+     * PLZ (mode local/post) oder Abholung liefert, ist die Auswahl bereits bekannt und
+     * verlässlich (dort greift die harte Durchsetzung bzw. ist Pickup ohnehin unkritisch)
+     * — dann bleibt dieser Check komplett aus.
+     */
+    private function get_incompatible_shipping_notice(): string {
+        $state = $this->get_state();
+        if ( ! in_array( $state['mode'], [ '', 'skipped' ], true ) ) {
+            return '';
+        }
+
+        $hidden_ids = $this->get_hidden_product_ids();
+        if ( empty( $hidden_ids ) || ! function_exists( 'WC' ) || ! WC()->cart || ! WC()->customer ) {
+            return '';
+        }
+
+        if ( WC()->session ) {
+            $chosen = (array) WC()->session->get( 'chosen_shipping_methods', [] );
+            if ( ! empty( $chosen ) ) {
+                $pickup_types = apply_filters( 'wc_plz_native_pickup_method_types', [ 'local_pickup' ] );
+                $chosen_types = array_map( function ( $method_id ) {
+                    return strtok( (string) $method_id, ':' );
+                }, $chosen );
+
+                if ( ! array_diff( $chosen_types, $pickup_types ) ) {
+                    return ''; // ausschließlich Pickup-Methoden gewählt — Radius irrelevant
+                }
+            }
+        }
+
+        $plz = $this->get_checkout_postcode();
+        if ( $plz === '' || $this->is_local( $plz ) ) {
+            return ''; // keine PLZ bekannt, oder innerhalb Lieferradius -> kein Postversand-Konflikt
+        }
+
+        $hidden_lookup = array_flip( $hidden_ids );
+        $blocked       = [];
+
+        foreach ( WC()->cart->get_cart() as $item ) {
+            if ( isset( $hidden_lookup[ (int) $item['product_id'] ] ) ) {
+                $blocked[] = $item['data']->get_name();
+            }
+        }
+
+        if ( empty( $blocked ) ) {
+            return '';
+        }
+
+        return sprintf(
+            'Für die gewählte Versandart nicht verfügbar: %s. Bitte Artikel entfernen oder Abholung wählen.',
+            implode( ', ', array_map( 'esc_html', $blocked ) )
+        );
+    }
+
+    /**
+     * Live-Update während Checkout-AJAX-Refresh (z.B. Versandart-Wechsel).
+     * wc_add_notice(), NICHT wc_print_notice() — WC_AJAX::update_order_review()
+     * sammelt per wc_get_notices() ein und rendert sie als "messages"-Fragment.
+     */
+    public function checkout_shipping_notice_live(): void {
+        $notice = $this->get_incompatible_shipping_notice();
+        if ( $notice !== '' ) {
+            wc_add_notice( $notice, 'notice' );
+        }
+    }
+
+    /**
+     * Initialer Seiten-Load: wc_print_notice() (sofortiges Echo), da wc_print_notices()
+     * bereits VOR dem woocommerce_before_checkout_form-Hook läuft — siehe
+     * checkout_min_order_notice() für das gleiche, bereits bewährte Pattern.
+     */
+    public function checkout_shipping_notice_initial(): void {
+        $notice = $this->get_incompatible_shipping_notice();
+        if ( $notice !== '' ) {
+            wc_print_notice( $notice, 'notice' );
         }
     }
 
