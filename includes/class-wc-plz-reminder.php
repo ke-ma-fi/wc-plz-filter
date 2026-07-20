@@ -312,8 +312,11 @@ final class WC_PLZ_Reminder {
         $to      = $is_dev ? $s['test_email'] : $order->get_billing_email();
         $subject = $this->build_subject( $order, $is_dev );
         $body    = $this->build_body( $order, $is_dev );
-        $headers = ! empty( $s['reply_to'] ) ? [ 'Reply-To: ' . $s['reply_to'] ] : [];
-        $success = wp_mail( $to, $subject, $body, $headers );
+        $success = Woohoo_Mailer::instance()->send( $to, $subject, $body, [
+            'reply_to'  => $s['reply_to'],
+            'source'    => 'Zahlungs-Erinnerung',
+            'reference' => 'Bestellung #' . $order->get_id(),
+        ] );
 
         // Flag nur im Live-Modus und nur bei Erfolg setzen
         if ( $success && ! $is_dev ) {
@@ -347,8 +350,11 @@ final class WC_PLZ_Reminder {
         $to      = $is_dev ? $s['test_email'] : $order->get_billing_email();
         $subject = $this->build_subject( $order, $is_dev );
         $body    = $this->build_body( $order, $is_dev );
-        $headers = ! empty( $s['reply_to'] ) ? [ 'Reply-To: ' . $s['reply_to'] ] : [];
-        $success = wp_mail( $to, $subject, $body, $headers );
+        $success = Woohoo_Mailer::instance()->send( $to, $subject, $body, [
+            'reply_to'  => $s['reply_to'],
+            'source'    => 'Zahlungs-Erinnerung',
+            'reference' => 'Bestellung #' . $order->get_id(),
+        ] );
 
         // Bei Resend eines fehlgeschlagenen Live-Versands: Flag bei Erfolg setzen
         if ( $success && ! $is_dev && $order->get_meta( self::META_FLAG ) !== 'true' ) {

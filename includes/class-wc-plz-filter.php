@@ -50,6 +50,9 @@ final class WC_PLZ_Filter {
         require_once WC_PLZ_FILTER_DIR . 'includes/class-wc-plz-updater.php';
         $this->updater = WC_PLZ_Updater::instance();
 
+        require_once WC_PLZ_FILTER_DIR . 'includes/class-woohoo-mailer.php';
+        $mailer = Woohoo_Mailer::instance();
+
         require_once WC_PLZ_FILTER_DIR . 'includes/class-wc-plz-reminder.php';
         $reminder = WC_PLZ_Reminder::instance();
 
@@ -60,12 +63,14 @@ final class WC_PLZ_Filter {
             require_once WC_PLZ_FILTER_DIR . 'includes/admin/class-woohoo-module-stats.php';
             require_once WC_PLZ_FILTER_DIR . 'includes/admin/class-woohoo-module-updater.php';
             require_once WC_PLZ_FILTER_DIR . 'includes/admin/class-woohoo-module-reminder.php';
+            require_once WC_PLZ_FILTER_DIR . 'includes/admin/class-woohoo-module-mailer.php';
 
             $admin_page = Woohoo_Admin_Page::instance();
             $admin_page->register_module( new Woohoo_Module_Delivery( $this ) );
             $admin_page->register_module( new Woohoo_Module_Stats( $this->stats ) );
             $admin_page->register_module( new Woohoo_Module_Updater( $this->updater ) );
             $admin_page->register_module( new Woohoo_Module_Reminder( $reminder ) );
+            $admin_page->register_module( new Woohoo_Module_Mailer( $mailer ) );
         }
 
         add_action( 'admin_init', [ $this, 'register_settings' ] );
