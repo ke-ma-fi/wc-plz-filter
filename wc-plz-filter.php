@@ -550,7 +550,7 @@ final class WC_PLZ_Filter {
         }
 
         return sprintf(
-            'Für die gewählte Versandart nicht verfügbar: %s. Bitte <a href="%s">hier</a> Artikel entfernen oder Abholung wählen.',
+            'Für die gewählte Versandart nicht verfügbar: %s. Bitte <a href="%s" style="text-decoration:underline;font-weight:700;">hier</a> Artikel entfernen oder Abholung wählen.',
             implode( ', ', array_map( 'esc_html', $blocked ) ),
             esc_url( wc_get_cart_url() )
         );
