@@ -371,6 +371,22 @@ final class WC_PLZ_Filter {
     /* --- fgf-Hardening: Server-Side Enforcement --- */
 
     /**
+     * Cart-Items deren Produkt-ID in $hidden_ids liegt, keyed by Cart-Item-Key.
+     */
+    private function find_hidden_cart_items( array $hidden_ids ): array {
+        $hidden_lookup = array_flip( $hidden_ids );
+        $matches       = [];
+
+        foreach ( WC()->cart->get_cart() as $key => $item ) {
+            if ( isset( $hidden_lookup[ (int) $item['product_id'] ] ) ) {
+                $matches[ $key ] = $item;
+            }
+        }
+
+        return $matches;
+    }
+
+    /**
      * Cart-Validation: Postversand-Modus + Produkt mit ausgeschlossener Klasse → Notice.
      */
     public function remove_excluded_cart_items(): void {
@@ -384,14 +400,11 @@ final class WC_PLZ_Filter {
             return;
         }
 
-        $hidden_lookup = array_flip( $hidden_ids );
-        $removed       = [];
+        $removed = [];
 
-        foreach ( WC()->cart->get_cart() as $key => $item ) {
-            if ( isset( $hidden_lookup[ (int) $item['product_id'] ] ) ) {
-                $removed[] = $item['data']->get_name();
-                WC()->cart->remove_cart_item( $key );
-            }
+        foreach ( $this->find_hidden_cart_items( $hidden_ids ) as $key => $item ) {
+            $removed[] = $item['data']->get_name();
+            WC()->cart->remove_cart_item( $key );
         }
 
         if ( ! empty( $removed ) ) {
@@ -416,20 +429,14 @@ final class WC_PLZ_Filter {
             return;
         }
 
-        $hidden_lookup = array_flip( $hidden_ids );
-
-        foreach ( WC()->cart->get_cart() as $item ) {
-            $product_id = (int) $item['product_id'];
-            if ( isset( $hidden_lookup[ $product_id ] ) ) {
-                $product = $item['data'];
-                wc_add_notice(
-                    sprintf(
-                        '%s ist im Postversand nicht verfügbar. Bitte aus dem Warenkorb entfernen oder die Lieferart ändern.',
-                        esc_html( $product->get_name() )
-                    ),
-                    'error'
-                );
-            }
+        foreach ( $this->find_hidden_cart_items( $hidden_ids ) as $item ) {
+            wc_add_notice(
+                sprintf(
+                    '%s ist im Postversand nicht verfügbar. Bitte aus dem Warenkorb entfernen oder die Lieferart ändern.',
+                    esc_html( $item['data']->get_name() )
+                ),
+                'error'
+            );
         }
 
         if ( ! is_checkout() ) {
@@ -535,14 +542,10 @@ final class WC_PLZ_Filter {
             return ''; // keine PLZ bekannt, oder innerhalb Lieferradius -> kein Postversand-Konflikt
         }
 
-        $hidden_lookup = array_flip( $hidden_ids );
-        $blocked       = [];
-
-        foreach ( WC()->cart->get_cart() as $item ) {
-            if ( isset( $hidden_lookup[ (int) $item['product_id'] ] ) ) {
-                $blocked[] = $item['data']->get_name();
-            }
-        }
+        $blocked = array_map(
+            fn( array $item ) => $item['data']->get_name(),
+            $this->find_hidden_cart_items( $hidden_ids )
+        );
 
         if ( empty( $blocked ) ) {
             return '';
