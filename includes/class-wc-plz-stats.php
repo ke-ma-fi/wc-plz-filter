@@ -117,7 +117,7 @@ final class WC_PLZ_Stats {
     }
 
     private function bump_cache(): void {
-        update_option( 'wc_plz_stats_epoch', $this->cache_epoch() + 1 );
+        update_option( 'wc_plz_stats_epoch', $this->cache_epoch() + 1, false );
     }
 
     /* ── Aggregierte Stats abrufen ───────────────── */
