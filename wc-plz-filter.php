@@ -549,9 +549,8 @@ final class WC_PLZ_Filter {
         }
 
         return sprintf(
-            'Für die gewählte Versandart nicht verfügbar: %s. Bitte <a href="%s" style="text-decoration:underline;font-weight:700;">hier</a> Artikel entfernen oder Abholung wählen.',
-            implode( ', ', array_map( 'esc_html', $blocked ) ),
-            esc_url( wc_get_cart_url() )
+            'Für den Postversand nicht verfügbar: %s. Möchten Sie trotzdem mit Postversand bestellen und die Produkte entfernen? <a href="#" class="wc-plz-force-post" style="text-decoration:underline;font-weight:700;">Hier klicken.</a>',
+            implode( ', ', array_map( 'esc_html', $blocked ) )
         );
     }
 

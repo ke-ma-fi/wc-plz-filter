@@ -542,6 +542,27 @@
       badge.addEventListener("click", openPopup);
     }
 
+    // Checkout: shipping-notice "trotzdem mit Postversand bestellen" link.
+    // Delegated, da der Hinweis per checkout.js-AJAX (update_order_review)
+    // dynamisch ein-/ausgeblendet wird und beim Init noch nicht im DOM sein kann.
+    if (parseInt(D.isCheckout, 10)) {
+      document.addEventListener("click", function (e) {
+        var link = e.target.closest && e.target.closest(".wc-plz-force-post");
+        if (!link) return;
+        e.preventDefault();
+
+        var field = $("#shipping_postcode") || $("#billing_postcode");
+        var plz = field ? field.value.replace(/\D/g, "") : "";
+
+        saveState("post", plz);
+        state = { mode: "post", plz: plz };
+
+        setTimeout(function () {
+          location.reload();
+        }, 300);
+      });
+    }
+
     // Checkout: sync postcode changes
     if (parseInt(D.isCheckout, 10)) {
       document.addEventListener("change", function (e) {
