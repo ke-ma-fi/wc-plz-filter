@@ -136,18 +136,19 @@ final class WC_PLZ_Updater {
     }
 
     public function fix_source_dir( string $source, string $remote_source, $upgrader, array $hook_extra ): string {
-        $expected_dir = 'wc-plz-filter-' . str_replace( '/', '-', $this->upgrade_branch ) . '/';
-
-        if ( ! str_ends_with( trailingslashit( $source ), $expected_dir ) ) {
-            return $source;
-        }
-
-        global $wp_filesystem;
+        // This filter is only attached for the duration of our own install() call
+        // (see run_upgrade()), so $source is always the single folder WordPress
+        // already extracted our archive into — no need to match it by name.
         // Rename to the currently active plugin folder name (not necessarily
         // "wc-plz-filter" — a manual zip upload can install under a different
         // slug, e.g. "wc-plz-filter-dev"), so this update overwrites it in place.
         $new_source = trailingslashit( $remote_source ) . basename( WC_PLZ_FILTER_DIR ) . '/';
 
+        if ( trailingslashit( $source ) === $new_source ) {
+            return $source;
+        }
+
+        global $wp_filesystem;
         if ( $wp_filesystem->move( $source, $new_source ) ) {
             return $new_source;
         }
