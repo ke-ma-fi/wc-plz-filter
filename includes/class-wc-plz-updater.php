@@ -12,8 +12,11 @@ final class WC_PLZ_Updater {
     use WC_PLZ_Singleton;
 
     const OPT_REPO   = 'wc_plz_updater_repo';
+    const OPT_BRANCH = 'wc_plz_updater_branch';
     const OPT_SECRET = 'wc_plz_updater_secret';
     const OPT_LOG    = 'wc_plz_updater_log';
+
+    private string $upgrade_branch = 'main';
 
     private function __construct() {
         add_action( 'rest_api_init',  [ $this, 'register_rest_routes' ] );
@@ -27,6 +30,10 @@ final class WC_PLZ_Updater {
 
     private function get_repo(): string {
         return (string) get_option( self::OPT_REPO, 'ke-ma-fi/wc-plz-filter' );
+    }
+
+    private function get_branch(): string {
+        return (string) get_option( self::OPT_BRANCH, 'main' );
     }
 
     private function get_secret(): string {
@@ -73,7 +80,7 @@ final class WC_PLZ_Updater {
 
         $payload = $request->get_json_params();
 
-        if ( ( $payload['ref'] ?? '' ) !== 'refs/heads/main' ) {
+        if ( ( $payload['ref'] ?? '' ) !== 'refs/heads/' . $this->get_branch() ) {
             return new WP_REST_Response( [ 'skipped' => true ], 200 );
         }
 
@@ -96,8 +103,9 @@ final class WC_PLZ_Updater {
 
         WP_Filesystem();
 
-        $old_version = WC_PLZ_Filter::VERSION;
-        $zip_url     = 'https://github.com/' . $this->get_repo() . '/archive/refs/heads/main.zip';
+        $old_version          = WC_PLZ_Filter::VERSION;
+        $this->upgrade_branch = $this->get_branch();
+        $zip_url              = 'https://github.com/' . $this->get_repo() . '/archive/refs/heads/' . $this->upgrade_branch . '.zip';
 
         add_filter( 'upgrader_source_selection', [ $this, 'fix_source_dir' ], 10, 4 );
 
@@ -128,7 +136,9 @@ final class WC_PLZ_Updater {
     }
 
     public function fix_source_dir( string $source, string $remote_source, $upgrader, array $hook_extra ): string {
-        if ( ! str_ends_with( trailingslashit( $source ), 'wc-plz-filter-main/' ) ) {
+        $expected_dir = 'wc-plz-filter-' . str_replace( '/', '-', $this->upgrade_branch ) . '/';
+
+        if ( ! str_ends_with( trailingslashit( $source ), $expected_dir ) ) {
             return $source;
         }
 
@@ -211,12 +221,26 @@ final class WC_PLZ_Updater {
                 return $v;
             },
         ] );
+
+        register_setting( 'wc_plz_updater_group', self::OPT_BRANCH, [
+            'type'              => 'string',
+            'default'           => 'main',
+            'sanitize_callback' => function ( $value ) {
+                $v = sanitize_text_field( $value );
+                if ( $v === '' || ! preg_match( '/^[a-zA-Z0-9_.\/\-]+$/', $v ) ) {
+                    add_settings_error( self::OPT_BRANCH, 'invalid_branch', 'Ungültiger Branch-Name.' );
+                    return get_option( self::OPT_BRANCH, 'main' );
+                }
+                return $v;
+            },
+        ] );
     }
 
     // ── Admin section ─────────────────────────────────────────────────────
 
     public function render_admin_section(): void {
         $repo   = $this->get_repo();
+        $branch = $this->get_branch();
         $secret = $this->get_secret();
         $log    = $this->get_log();
         $last   = $log[0] ?? null;
@@ -260,6 +284,17 @@ final class WC_PLZ_Updater {
                     </td>
                 </tr>
                 <tr>
+                    <th scope="row">Branch</th>
+                    <td>
+                        <input type="text"
+                               name="<?php echo esc_attr( self::OPT_BRANCH ); ?>"
+                               value="<?php echo esc_attr( $branch ); ?>"
+                               placeholder="main"
+                               class="regular-text" />
+                        <p class="description">Von welchem Branch aktualisiert werden soll, z. B. <code>main</code> oder <code>dev</code>. Auf Dev-Instanzen hier <code>dev</code> eintragen.</p>
+                    </td>
+                </tr>
+                <tr>
                     <th scope="row">Webhook Secret</th>
                     <td>
                         <code style="background:#f0f0f1;padding:4px 8px;border-radius:3px;user-select:all;"><?php echo esc_html( $secret ); ?></code>
@@ -281,7 +316,7 @@ final class WC_PLZ_Updater {
                     </td>
                 </tr>
             </table>
-            <?php submit_button( 'Repo speichern', 'secondary' ); ?>
+            <?php submit_button( 'Einstellungen speichern', 'secondary' ); ?>
         </form>
 
         <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="margin-top:8px;">
