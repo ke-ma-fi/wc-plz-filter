@@ -271,6 +271,31 @@ final class WC_PLZ_Updater {
             <?php endif; ?>
         </table>
 
+        <table class="form-table" style="max-width:680px;">
+            <tr>
+                <th scope="row">Webhook Secret</th>
+                <td>
+                    <code style="background:#f0f0f1;padding:4px 8px;border-radius:3px;user-select:all;"><?php echo esc_html( $secret ); ?></code>
+                    <p class="description">Dieses Secret bei GitHub unter dem Webhook-Secret-Feld eintragen.</p>
+                </td>
+            </tr>
+            <tr>
+                <th scope="row">Webhook-URL</th>
+                <td>
+                    <code id="wc-plz-webhook-url" style="background:#f0f0f1;padding:4px 8px;border-radius:3px;"><?php echo esc_html( rest_url( 'wc-plz/v1/webhook' ) ); ?></code>
+                    <button type="button" class="button button-small" style="margin-left:8px;"
+                            onclick="navigator.clipboard.writeText(document.getElementById('wc-plz-webhook-url').textContent).then(()=>this.textContent='Kopiert!').catch(()=>{}); return false;">Kopieren</button>
+                    <p class="description">GitHub: Settings &rarr; Webhooks &rarr; Add webhook &rarr; Content type: <code>application/json</code> &rarr; Events: Just the push event</p>
+                </td>
+            </tr>
+        </table>
+
+        <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="margin-bottom:16px;">
+            <?php wp_nonce_field( 'wc_plz_regenerate_secret' ); ?>
+            <input type="hidden" name="action" value="wc_plz_regenerate_secret" />
+            <button type="submit" class="button button-small" onclick="return confirm('Secret wirklich neu generieren? Den neuen Wert musst du dann auch bei GitHub eintragen.');">Secret regenerieren</button>
+        </form>
+
         <form method="post" action="options.php">
             <?php settings_fields( 'wc_plz_updater_group' ); ?>
             <table class="form-table" style="max-width:680px;">
@@ -294,27 +319,6 @@ final class WC_PLZ_Updater {
                                placeholder="main"
                                class="regular-text" />
                         <p class="description">Von welchem Branch aktualisiert werden soll, z. B. <code>main</code> oder <code>dev</code>. Auf Dev-Instanzen hier <code>dev</code> eintragen.</p>
-                    </td>
-                </tr>
-                <tr>
-                    <th scope="row">Webhook Secret</th>
-                    <td>
-                        <code style="background:#f0f0f1;padding:4px 8px;border-radius:3px;user-select:all;"><?php echo esc_html( $secret ); ?></code>
-                        <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display:inline;margin-left:8px;">
-                            <?php wp_nonce_field( 'wc_plz_regenerate_secret' ); ?>
-                            <input type="hidden" name="action" value="wc_plz_regenerate_secret" />
-                            <button type="submit" class="button button-small" onclick="return confirm('Secret wirklich neu generieren? Den neuen Wert musst du dann auch bei GitHub eintragen.');">Regenerieren</button>
-                        </form>
-                        <p class="description">Dieses Secret bei GitHub unter dem Webhook-Secret-Feld eintragen.</p>
-                    </td>
-                </tr>
-                <tr>
-                    <th scope="row">Webhook-URL</th>
-                    <td>
-                        <code id="wc-plz-webhook-url" style="background:#f0f0f1;padding:4px 8px;border-radius:3px;"><?php echo esc_html( rest_url( 'wc-plz/v1/webhook' ) ); ?></code>
-                        <button type="button" class="button button-small" style="margin-left:8px;"
-                                onclick="navigator.clipboard.writeText(document.getElementById('wc-plz-webhook-url').textContent).then(()=>this.textContent='Kopiert!').catch(()=>{}); return false;">Kopieren</button>
-                        <p class="description">GitHub: Settings &rarr; Webhooks &rarr; Add webhook &rarr; Content type: <code>application/json</code> &rarr; Events: Just the push event</p>
                     </td>
                 </tr>
             </table>
