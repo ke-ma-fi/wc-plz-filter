@@ -15,15 +15,41 @@ final class WC_PLZ_Updater {
     const OPT_BRANCH = 'wc_plz_updater_branch';
     const OPT_SECRET = 'wc_plz_updater_secret';
     const OPT_LOG    = 'wc_plz_updater_log';
+    const OPT_CAP_VERSION = 'wc_plz_updater_cap_version';
+
+    const MANAGE_UPDATE_CAP = 'manage_woohoo_updates';
 
     private string $upgrade_branch = 'main';
 
     private function __construct() {
+        $this->maybe_grant_update_cap_to_admins();
+
         add_action( 'rest_api_init',  [ $this, 'register_rest_routes' ] );
         add_action( 'admin_init',     [ $this, 'register_settings' ] );
         add_action( 'admin_post_wc_plz_manual_update',    [ $this, 'handle_manual_update' ] );
         add_action( 'admin_post_wc_plz_regenerate_secret', [ $this, 'handle_regenerate_secret' ] );
+        add_action( 'admin_post_wc_plz_grant_update_cap', [ $this, 'handle_grant_update_cap' ] );
         add_action( 'admin_notices',  [ $this, 'show_update_notice' ] );
+    }
+
+    /**
+     * Auto-updates (webhook or manual "Jetzt aktualisieren") overwrite plugin
+     * files in place and never re-fire register_activation_hook, so an
+     * already-installed site would otherwise never pick up a newly
+     * introduced capability. Mirrors WC_PLZ_Filter::maybe_bust_rocket_cache()'s
+     * once-per-version pattern to close that gap.
+     */
+    private function maybe_grant_update_cap_to_admins(): void {
+        if ( get_option( self::OPT_CAP_VERSION, '' ) === WC_PLZ_Filter::VERSION ) {
+            return;
+        }
+
+        $admin_role = get_role( 'administrator' );
+        if ( $admin_role ) {
+            $admin_role->add_cap( self::MANAGE_UPDATE_CAP );
+        }
+
+        update_option( self::OPT_CAP_VERSION, WC_PLZ_Filter::VERSION );
     }
 
     // ── Option helpers ────────────────────────────────────────────────────
@@ -159,7 +185,7 @@ final class WC_PLZ_Updater {
     // ── Admin handlers ────────────────────────────────────────────────────
 
     public function handle_manual_update(): void {
-        if ( ! current_user_can( 'manage_options' ) ) {
+        if ( ! current_user_can( self::MANAGE_UPDATE_CAP ) ) {
             wp_die( 'Insufficient permissions.', 403 );
         }
 
@@ -180,7 +206,7 @@ final class WC_PLZ_Updater {
     }
 
     public function handle_regenerate_secret(): void {
-        if ( ! current_user_can( 'manage_options' ) ) {
+        if ( ! current_user_can( self::MANAGE_UPDATE_CAP ) ) {
             wp_die( 'Insufficient permissions.', 403 );
         }
 
@@ -191,17 +217,36 @@ final class WC_PLZ_Updater {
         exit;
     }
 
-    public function show_update_notice(): void {
-        $status = sanitize_key( $_GET['plz_update'] ?? '' );
-        if ( $status === '' ) {
-            return;
+    public function handle_grant_update_cap(): void {
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_die( 'Insufficient permissions.', 403 );
         }
 
+        check_admin_referer( 'wc_plz_grant_update_cap' );
+
+        $user_id = (int) ( $_POST['wc_plz_grant_user'] ?? 0 );
+        $user    = get_user_by( 'id', $user_id );
+
+        if ( ! $user ) {
+            wp_safe_redirect( add_query_arg( 'plz_grant', 'error_no_user',
+                Woohoo_Admin_Page::tab_url( 'updater' ) ) );
+            exit;
+        }
+
+        $user->add_cap( self::MANAGE_UPDATE_CAP );
+
+        wp_safe_redirect( add_query_arg( 'plz_grant', 'success',
+            Woohoo_Admin_Page::tab_url( 'updater' ) ) );
+        exit;
+    }
+
+    public function show_update_notice(): void {
         $screen = get_current_screen();
         if ( ! $screen || $screen->id !== 'woocommerce_page_woohoo' ) {
             return;
         }
 
+        $status = sanitize_key( $_GET['plz_update'] ?? '' );
         if ( $status === 'success' ) {
             echo '<div class="notice notice-success is-dismissible"><p>Plugin erfolgreich aktualisiert.</p></div>';
         } elseif ( $status === 'error' ) {
@@ -209,12 +254,19 @@ final class WC_PLZ_Updater {
         } elseif ( $status === 'error_not_configured' ) {
             echo '<div class="notice notice-warning is-dismissible"><p>Update fehlgeschlagen: GitHub-Repo nicht konfiguriert.</p></div>';
         }
+
+        $grant_status = sanitize_key( $_GET['plz_grant'] ?? '' );
+        if ( $grant_status === 'success' ) {
+            echo '<div class="notice notice-success is-dismissible"><p>Update-Recht erfolgreich vergeben.</p></div>';
+        } elseif ( $grant_status === 'error_no_user' ) {
+            echo '<div class="notice notice-error is-dismissible"><p>Update-Recht konnte nicht vergeben werden: Benutzer nicht gefunden.</p></div>';
+        }
     }
 
     // ── Settings registration ─────────────────────────────────────────────
 
     public function register_settings(): void {
-        add_filter( 'option_page_capability_wc_plz_updater_group', fn() => WC_PLZ_Filter::MANAGE_CAP );
+        add_filter( 'option_page_capability_wc_plz_updater_group', fn() => self::MANAGE_UPDATE_CAP );
 
         register_setting( 'wc_plz_updater_group', self::OPT_REPO, [
             'type'              => 'string',
@@ -245,6 +297,10 @@ final class WC_PLZ_Updater {
     // ── Admin section ─────────────────────────────────────────────────────
 
     public function render_admin_section(): void {
+        if ( ! current_user_can( self::MANAGE_UPDATE_CAP ) ) {
+            return;
+        }
+
         $repo   = $this->get_repo();
         $branch = $this->get_branch();
         $secret = $this->get_secret();
@@ -299,6 +355,23 @@ final class WC_PLZ_Updater {
             <input type="hidden" name="action" value="wc_plz_regenerate_secret" />
             <button type="submit" class="button button-small" onclick="return confirm('Secret wirklich neu generieren? Den neuen Wert musst du dann auch bei GitHub eintragen.');">Secret regenerieren</button>
         </form>
+
+        <?php if ( current_user_can( 'manage_options' ) ) : ?>
+        <h3 style="margin-top:20px;">Update-Rechte vergeben</h3>
+        <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="margin-bottom:16px;">
+            <?php wp_nonce_field( 'wc_plz_grant_update_cap' ); ?>
+            <input type="hidden" name="action" value="wc_plz_grant_update_cap" />
+            <?php wp_dropdown_users( [ 'name' => 'wc_plz_grant_user', 'role__not_in' => [ 'customer' ] ] ); ?>
+            <?php submit_button(
+                'Update-Recht vergeben',
+                'secondary',
+                'submit',
+                false,
+                [ 'onclick' => "return confirm('Achtung: Diese Person kann danach das GitHub-Repo/Branch ändern und Updates auslösen — praktisch Code-Ausführungsrechte auf dieser Seite. Wirklich vergeben?');" ]
+            ); ?>
+            <p class="description">Vergibt das Recht, Auto-Update-Einstellungen zu ändern und Updates auszulösen, an den ausgewählten Benutzer.</p>
+        </form>
+        <?php endif; ?>
 
         <form method="post" action="options.php">
             <?php settings_fields( 'wc_plz_updater_group' ); ?>

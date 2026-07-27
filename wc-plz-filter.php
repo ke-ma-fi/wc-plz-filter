@@ -42,6 +42,8 @@ register_activation_hook( __FILE__, function () {
     require_once WC_PLZ_FILTER_DIR . 'includes/class-wc-plz-reminder.php';
     WC_PLZ_Reminder::activate();
 
+    require_once WC_PLZ_FILTER_DIR . 'includes/class-wc-plz-updater.php';
+
     // Capability an Rollen vergeben, die standardmäßig Zugriff haben sollen.
     // Einzelne Benutzer können zusätzlich über "Benutzer > Bearbeiten" berechtigt werden.
     foreach ( [ 'administrator', 'shop_manager' ] as $role_name ) {
@@ -49,6 +51,13 @@ register_activation_hook( __FILE__, function () {
         if ( $role ) {
             $role->add_cap( WC_PLZ_Filter::MANAGE_CAP );
         }
+    }
+
+    // Auto-Update-Verwaltung ist strenger als die allgemeine Plugin-Verwaltung:
+    // nur Administratoren, kein shop_manager (siehe manage_woohoo_updates).
+    $admin_role = get_role( 'administrator' );
+    if ( $admin_role ) {
+        $admin_role->add_cap( WC_PLZ_Updater::MANAGE_UPDATE_CAP );
     }
 } );
 
@@ -58,10 +67,17 @@ register_deactivation_hook( __FILE__, function () {
     require_once WC_PLZ_FILTER_DIR . 'includes/class-wc-plz-reminder.php';
     WC_PLZ_Reminder::deactivate();
 
+    require_once WC_PLZ_FILTER_DIR . 'includes/class-wc-plz-updater.php';
+
     foreach ( [ 'administrator', 'shop_manager' ] as $role_name ) {
         $role = get_role( $role_name );
         if ( $role ) {
             $role->remove_cap( WC_PLZ_Filter::MANAGE_CAP );
         }
+    }
+
+    $admin_role = get_role( 'administrator' );
+    if ( $admin_role ) {
+        $admin_role->remove_cap( WC_PLZ_Updater::MANAGE_UPDATE_CAP );
     }
 } );
