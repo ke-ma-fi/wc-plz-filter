@@ -12,8 +12,11 @@ final class WC_PLZ_Updater {
     use WC_PLZ_Singleton;
 
     const OPT_REPO   = 'wc_plz_updater_repo';
+    const OPT_BRANCH = 'wc_plz_updater_branch';
     const OPT_SECRET = 'wc_plz_updater_secret';
     const OPT_LOG    = 'wc_plz_updater_log';
+
+    private string $upgrade_branch = 'main';
 
     private function __construct() {
         add_action( 'rest_api_init',  [ $this, 'register_rest_routes' ] );
@@ -27,6 +30,10 @@ final class WC_PLZ_Updater {
 
     private function get_repo(): string {
         return (string) get_option( self::OPT_REPO, 'ke-ma-fi/wc-plz-filter' );
+    }
+
+    private function get_branch(): string {
+        return (string) get_option( self::OPT_BRANCH, 'main' );
     }
 
     private function get_secret(): string {
@@ -73,7 +80,7 @@ final class WC_PLZ_Updater {
 
         $payload = $request->get_json_params();
 
-        if ( ( $payload['ref'] ?? '' ) !== 'refs/heads/main' ) {
+        if ( ( $payload['ref'] ?? '' ) !== 'refs/heads/' . $this->get_branch() ) {
             return new WP_REST_Response( [ 'skipped' => true ], 200 );
         }
 
@@ -96,8 +103,9 @@ final class WC_PLZ_Updater {
 
         WP_Filesystem();
 
-        $old_version = WC_PLZ_Filter::VERSION;
-        $zip_url     = 'https://github.com/' . $this->get_repo() . '/archive/refs/heads/main.zip';
+        $old_version          = WC_PLZ_Filter::VERSION;
+        $this->upgrade_branch = $this->get_branch();
+        $zip_url              = 'https://github.com/' . $this->get_repo() . '/archive/refs/heads/' . $this->upgrade_branch . '.zip';
 
         add_filter( 'upgrader_source_selection', [ $this, 'fix_source_dir' ], 10, 4 );
 
@@ -107,7 +115,7 @@ final class WC_PLZ_Updater {
 
         remove_filter( 'upgrader_source_selection', [ $this, 'fix_source_dir' ], 10 );
 
-        $plugin_file = WP_PLUGIN_DIR . '/wc-plz-filter/wc-plz-filter.php';
+        $plugin_file = WC_PLZ_FILTER_DIR . 'wc-plz-filter.php';
         $data        = get_plugin_data( $plugin_file, false, false );
         $new_version = $data['Version'] ?? 'unknown';
 
@@ -128,13 +136,19 @@ final class WC_PLZ_Updater {
     }
 
     public function fix_source_dir( string $source, string $remote_source, $upgrader, array $hook_extra ): string {
-        if ( ! str_ends_with( trailingslashit( $source ), 'wc-plz-filter-main/' ) ) {
+        // This filter is only attached for the duration of our own install() call
+        // (see run_upgrade()), so $source is always the single folder WordPress
+        // already extracted our archive into — no need to match it by name.
+        // Rename to the currently active plugin folder name (not necessarily
+        // "wc-plz-filter" — a manual zip upload can install under a different
+        // slug, e.g. "wc-plz-filter-dev"), so this update overwrites it in place.
+        $new_source = trailingslashit( $remote_source ) . basename( WC_PLZ_FILTER_DIR ) . '/';
+
+        if ( trailingslashit( $source ) === $new_source ) {
             return $source;
         }
 
         global $wp_filesystem;
-        $new_source = trailingslashit( $remote_source ) . 'wc-plz-filter/';
-
         if ( $wp_filesystem->move( $source, $new_source ) ) {
             return $new_source;
         }
@@ -153,7 +167,7 @@ final class WC_PLZ_Updater {
 
         if ( $this->get_repo() === '' ) {
             wp_safe_redirect( add_query_arg( 'plz_update', 'error_not_configured',
-                admin_url( 'admin.php?page=wc-plz-filter' ) ) );
+                Woohoo_Admin_Page::tab_url( 'updater' ) ) );
             exit;
         }
 
@@ -161,7 +175,7 @@ final class WC_PLZ_Updater {
         $status = $result['success'] ? 'success' : 'error';
 
         wp_safe_redirect( add_query_arg( 'plz_update', $status,
-            admin_url( 'admin.php?page=wc-plz-filter' ) ) );
+            Woohoo_Admin_Page::tab_url( 'updater' ) ) );
         exit;
     }
 
@@ -173,7 +187,7 @@ final class WC_PLZ_Updater {
         check_admin_referer( 'wc_plz_regenerate_secret' );
         update_option( self::OPT_SECRET, bin2hex( random_bytes( 32 ) ) );
 
-        wp_safe_redirect( admin_url( 'admin.php?page=wc-plz-filter' ) );
+        wp_safe_redirect( Woohoo_Admin_Page::tab_url( 'updater' ) );
         exit;
     }
 
@@ -184,7 +198,7 @@ final class WC_PLZ_Updater {
         }
 
         $screen = get_current_screen();
-        if ( ! $screen || $screen->id !== 'woocommerce_page_wc-plz-filter' ) {
+        if ( ! $screen || $screen->id !== 'woocommerce_page_woohoo' ) {
             return;
         }
 
@@ -200,6 +214,8 @@ final class WC_PLZ_Updater {
     // ── Settings registration ─────────────────────────────────────────────
 
     public function register_settings(): void {
+        add_filter( 'option_page_capability_wc_plz_updater_group', fn() => WC_PLZ_Filter::MANAGE_CAP );
+
         register_setting( 'wc_plz_updater_group', self::OPT_REPO, [
             'type'              => 'string',
             'sanitize_callback' => function ( $value ) {
@@ -211,17 +227,30 @@ final class WC_PLZ_Updater {
                 return $v;
             },
         ] );
+
+        register_setting( 'wc_plz_updater_group', self::OPT_BRANCH, [
+            'type'              => 'string',
+            'default'           => 'main',
+            'sanitize_callback' => function ( $value ) {
+                $v = sanitize_text_field( $value );
+                if ( $v === '' || ! preg_match( '/^[a-zA-Z0-9_.\/\-]+$/', $v ) ) {
+                    add_settings_error( self::OPT_BRANCH, 'invalid_branch', 'Ungültiger Branch-Name.' );
+                    return get_option( self::OPT_BRANCH, 'main' );
+                }
+                return $v;
+            },
+        ] );
     }
 
     // ── Admin section ─────────────────────────────────────────────────────
 
     public function render_admin_section(): void {
         $repo   = $this->get_repo();
+        $branch = $this->get_branch();
         $secret = $this->get_secret();
         $log    = $this->get_log();
         $last   = $log[0] ?? null;
         ?>
-        <hr />
         <h2>Auto-Update</h2>
 
         <table class="form-table" style="max-width:680px;">
@@ -246,6 +275,31 @@ final class WC_PLZ_Updater {
             <?php endif; ?>
         </table>
 
+        <table class="form-table" style="max-width:680px;">
+            <tr>
+                <th scope="row">Webhook Secret</th>
+                <td>
+                    <code style="background:#f0f0f1;padding:4px 8px;border-radius:3px;user-select:all;"><?php echo esc_html( $secret ); ?></code>
+                    <p class="description">Dieses Secret bei GitHub unter dem Webhook-Secret-Feld eintragen.</p>
+                </td>
+            </tr>
+            <tr>
+                <th scope="row">Webhook-URL</th>
+                <td>
+                    <code id="wc-plz-webhook-url" style="background:#f0f0f1;padding:4px 8px;border-radius:3px;"><?php echo esc_html( rest_url( 'wc-plz/v1/webhook' ) ); ?></code>
+                    <button type="button" class="button button-small" style="margin-left:8px;"
+                            onclick="navigator.clipboard.writeText(document.getElementById('wc-plz-webhook-url').textContent).then(()=>this.textContent='Kopiert!').catch(()=>{}); return false;">Kopieren</button>
+                    <p class="description">GitHub: Settings &rarr; Webhooks &rarr; Add webhook &rarr; Content type: <code>application/json</code> &rarr; Events: Just the push event</p>
+                </td>
+            </tr>
+        </table>
+
+        <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="margin-bottom:16px;">
+            <?php wp_nonce_field( 'wc_plz_regenerate_secret' ); ?>
+            <input type="hidden" name="action" value="wc_plz_regenerate_secret" />
+            <button type="submit" class="button button-small" onclick="return confirm('Secret wirklich neu generieren? Den neuen Wert musst du dann auch bei GitHub eintragen.');">Secret regenerieren</button>
+        </form>
+
         <form method="post" action="options.php">
             <?php settings_fields( 'wc_plz_updater_group' ); ?>
             <table class="form-table" style="max-width:680px;">
@@ -261,28 +315,18 @@ final class WC_PLZ_Updater {
                     </td>
                 </tr>
                 <tr>
-                    <th scope="row">Webhook Secret</th>
+                    <th scope="row">Branch</th>
                     <td>
-                        <code style="background:#f0f0f1;padding:4px 8px;border-radius:3px;user-select:all;"><?php echo esc_html( $secret ); ?></code>
-                        <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display:inline;margin-left:8px;">
-                            <?php wp_nonce_field( 'wc_plz_regenerate_secret' ); ?>
-                            <input type="hidden" name="action" value="wc_plz_regenerate_secret" />
-                            <button type="submit" class="button button-small" onclick="return confirm('Secret wirklich neu generieren? Den neuen Wert musst du dann auch bei GitHub eintragen.');">Regenerieren</button>
-                        </form>
-                        <p class="description">Dieses Secret bei GitHub unter dem Webhook-Secret-Feld eintragen.</p>
-                    </td>
-                </tr>
-                <tr>
-                    <th scope="row">Webhook-URL</th>
-                    <td>
-                        <code id="wc-plz-webhook-url" style="background:#f0f0f1;padding:4px 8px;border-radius:3px;"><?php echo esc_html( rest_url( 'wc-plz/v1/webhook' ) ); ?></code>
-                        <button type="button" class="button button-small" style="margin-left:8px;"
-                                onclick="navigator.clipboard.writeText(document.getElementById('wc-plz-webhook-url').textContent).then(()=>this.textContent='Kopiert!').catch(()=>{}); return false;">Kopieren</button>
-                        <p class="description">GitHub: Settings &rarr; Webhooks &rarr; Add webhook &rarr; Content type: <code>application/json</code> &rarr; Events: Just the push event</p>
+                        <input type="text"
+                               name="<?php echo esc_attr( self::OPT_BRANCH ); ?>"
+                               value="<?php echo esc_attr( $branch ); ?>"
+                               placeholder="main"
+                               class="regular-text" />
+                        <p class="description">Von welchem Branch aktualisiert werden soll, z. B. <code>main</code> oder <code>dev</code>. Auf Dev-Instanzen hier <code>dev</code> eintragen.</p>
                     </td>
                 </tr>
             </table>
-            <?php submit_button( 'Repo speichern', 'secondary' ); ?>
+            <?php submit_button( 'Einstellungen speichern', 'secondary' ); ?>
         </form>
 
         <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="margin-top:8px;">

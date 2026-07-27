@@ -29,7 +29,6 @@ final class WC_PLZ_Reminder {
     private ?array $settings_cache = null;
 
     private function __construct() {
-        add_action( 'admin_menu',  [ $this, 'register_admin_menu' ] );
         add_action( 'admin_init',  [ $this, 'register_settings' ] );
         add_action( 'admin_init',  [ $this, 'handle_admin_actions' ] );
         add_filter( 'cron_schedules', [ $this, 'register_cron_schedule' ] );
@@ -313,8 +312,11 @@ final class WC_PLZ_Reminder {
         $to      = $is_dev ? $s['test_email'] : $order->get_billing_email();
         $subject = $this->build_subject( $order, $is_dev );
         $body    = $this->build_body( $order, $is_dev );
-        $headers = ! empty( $s['reply_to'] ) ? [ 'Reply-To: ' . $s['reply_to'] ] : [];
-        $success = wp_mail( $to, $subject, $body, $headers );
+        $success = Woohoo_Mailer::instance()->send( $to, $subject, $body, [
+            'reply_to'  => $s['reply_to'],
+            'source'    => 'Zahlungs-Erinnerung',
+            'reference' => 'Bestellung #' . $order->get_id(),
+        ] );
 
         // Flag nur im Live-Modus und nur bei Erfolg setzen
         if ( $success && ! $is_dev ) {
@@ -348,8 +350,11 @@ final class WC_PLZ_Reminder {
         $to      = $is_dev ? $s['test_email'] : $order->get_billing_email();
         $subject = $this->build_subject( $order, $is_dev );
         $body    = $this->build_body( $order, $is_dev );
-        $headers = ! empty( $s['reply_to'] ) ? [ 'Reply-To: ' . $s['reply_to'] ] : [];
-        $success = wp_mail( $to, $subject, $body, $headers );
+        $success = Woohoo_Mailer::instance()->send( $to, $subject, $body, [
+            'reply_to'  => $s['reply_to'],
+            'source'    => 'Zahlungs-Erinnerung',
+            'reference' => 'Bestellung #' . $order->get_id(),
+        ] );
 
         // Bei Resend eines fehlgeschlagenen Live-Versands: Flag bei Erfolg setzen
         if ( $success && ! $is_dev && $order->get_meta( self::META_FLAG ) !== 'true' ) {
@@ -383,19 +388,6 @@ final class WC_PLZ_Reminder {
         return is_array( $log ) ? $log : [];
     }
 
-    /* ── Admin-Menü ──────────────────────────────── */
-
-    public function register_admin_menu(): void {
-        add_submenu_page(
-            'woocommerce',
-            'Zahlungs-Erinnerung',
-            'Zahlungs-Erinnerung',
-            WC_PLZ_Filter::MANAGE_CAP,
-            'wc-plz-reminder',
-            [ $this, 'render_admin' ]
-        );
-    }
-
     /* ── Admin-Actions ───────────────────────────── */
 
     public function handle_admin_actions(): void {
@@ -407,7 +399,7 @@ final class WC_PLZ_Reminder {
         if ( isset( $_POST['wc_plz_reminder_testrun'] ) ) {
             check_admin_referer( 'wc_plz_reminder_testrun' );
             if ( empty( $this->get_settings()['dev_mode'] ) ) {
-                wp_safe_redirect( admin_url( 'admin.php?page=wc-plz-reminder' ) );
+                wp_safe_redirect( Woohoo_Admin_Page::tab_url( 'reminder' ) );
                 exit;
             }
             $results = $this->run_scan( true );
@@ -418,7 +410,7 @@ final class WC_PLZ_Reminder {
                 $results['errors']
             );
             set_transient( 'wc_plz_reminder_notice', $msg, 60 );
-            wp_safe_redirect( admin_url( 'admin.php?page=wc-plz-reminder' ) );
+            wp_safe_redirect( Woohoo_Admin_Page::tab_url( 'reminder' ) );
             exit;
         }
 
@@ -440,7 +432,7 @@ final class WC_PLZ_Reminder {
                 $msg = 'Bestellung nicht gefunden.';
             }
             set_transient( 'wc_plz_reminder_notice', $msg, 60 );
-            wp_safe_redirect( admin_url( 'admin.php?page=wc-plz-reminder' ) );
+            wp_safe_redirect( Woohoo_Admin_Page::tab_url( 'reminder' ) );
             exit;
         }
 
@@ -453,14 +445,18 @@ final class WC_PLZ_Reminder {
             $current['mail_body']    = $defs['mail_body'];
             update_option( self::OPT, $current );
             $this->settings_cache = null;
-            wp_safe_redirect( admin_url( 'admin.php?page=wc-plz-reminder&text_reset=1' ) );
+            wp_safe_redirect( Woohoo_Admin_Page::tab_url( 'reminder', [ 'text_reset' => '1' ] ) );
             exit;
         }
     }
 
     /* ── Admin-Tab HTML ──────────────────────────── */
 
-    public function render_admin(): void {
+    /**
+     * Tab-Inhalt für Woohoo_Module_Reminder. Rendert nur den Inhalt (kein
+     * <div class="wrap">/<h1> - das übernimmt Woohoo_Admin_Page).
+     */
+    public function render_tab(): void {
         if ( ! current_user_can( WC_PLZ_Filter::MANAGE_CAP ) ) {
             return;
         }
@@ -480,9 +476,6 @@ final class WC_PLZ_Reminder {
 
         $pending_count = $this->get_pending_orders_count();
         ?>
-        <div class="wrap">
-            <h1>Zahlungs-Erinnerung</h1>
-
             <?php if ( $notice ) : ?>
                 <div class="notice notice-success is-dismissible"><p><?php echo esc_html( $notice ); ?></p></div>
             <?php endif; ?>
@@ -685,7 +678,6 @@ final class WC_PLZ_Reminder {
                     </tbody>
                 </table>
             <?php endif; ?>
-        </div>
         <?php
     }
 }
