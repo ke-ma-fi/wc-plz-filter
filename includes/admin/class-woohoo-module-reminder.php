@@ -17,6 +17,10 @@ final class Woohoo_Module_Reminder implements Woohoo_Module_Interface {
         return 'Zahlungs-Erinnerung';
     }
 
+    public function is_visible(): bool {
+        return true;
+    }
+
     public function render_tab(): void {
         $this->reminder->render_tab();
     }

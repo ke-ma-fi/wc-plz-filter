@@ -141,11 +141,11 @@ final class WC_PLZ_Updater {
 
         remove_filter( 'upgrader_source_selection', [ $this, 'fix_source_dir' ], 10 );
 
+        $success = ( $result === true );
+
         $plugin_file = WC_PLZ_FILTER_DIR . 'wc-plz-filter.php';
         $data        = get_plugin_data( $plugin_file, false, false );
         $new_version = $data['Version'] ?? 'unknown';
-
-        $success = ( $result === true );
         $message = $success
             ? sprintf( 'Updated from %s to %s.', $old_version, $new_version )
             : ( is_wp_error( $result ) ? $result->get_error_message() : 'Unknown upgrade error.' );

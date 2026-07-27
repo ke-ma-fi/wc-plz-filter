@@ -17,6 +17,10 @@ final class Woohoo_Module_Updater implements Woohoo_Module_Interface {
         return 'Updates';
     }
 
+    public function is_visible(): bool {
+        return current_user_can( WC_PLZ_Updater::MANAGE_UPDATE_CAP );
+    }
+
     public function render_tab(): void {
         $this->updater->render_admin_section();
     }

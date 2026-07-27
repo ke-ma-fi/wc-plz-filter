@@ -17,6 +17,10 @@ final class Woohoo_Module_Stats implements Woohoo_Module_Interface {
         return 'Statistik';
     }
 
+    public function is_visible(): bool {
+        return true;
+    }
+
     public function render_tab(): void {
         $this->stats->render_admin_section();
     }

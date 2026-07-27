@@ -23,6 +23,11 @@ final class Woohoo_Admin_Page {
         $this->modules[ $module->get_tab_slug() ] = $module;
     }
 
+    /** @return array<string, Woohoo_Module_Interface> */
+    private function get_visible_modules(): array {
+        return array_filter( $this->modules, fn( Woohoo_Module_Interface $module ) => $module->is_visible() );
+    }
+
     public function register_menu(): void {
         add_submenu_page(
             'woocommerce',
@@ -46,12 +51,12 @@ final class Woohoo_Admin_Page {
         );
     }
 
-    private function get_active_tab(): string {
+    private function get_active_tab( array $visible_modules ): string {
         $requested = sanitize_key( wp_unslash( $_GET['tab'] ?? '' ) );
-        if ( isset( $this->modules[ $requested ] ) ) {
+        if ( isset( $visible_modules[ $requested ] ) ) {
             return $requested;
         }
-        return (string) array_key_first( $this->modules );
+        return (string) array_key_first( $visible_modules );
     }
 
     public function render_page(): void {
@@ -59,13 +64,14 @@ final class Woohoo_Admin_Page {
             return;
         }
 
-        $active = $this->get_active_tab();
+        $visible_modules = $this->get_visible_modules();
+        $active          = $this->get_active_tab( $visible_modules );
         ?>
         <div class="wrap">
             <h1>DT Woohoo</h1>
-            <?php if ( count( $this->modules ) > 1 ) : ?>
+            <?php if ( count( $visible_modules ) > 1 ) : ?>
             <h2 class="nav-tab-wrapper">
-                <?php foreach ( $this->modules as $slug => $module ) : ?>
+                <?php foreach ( $visible_modules as $slug => $module ) : ?>
                     <a href="<?php echo esc_url( self::tab_url( $slug ) ); ?>"
                        class="nav-tab <?php echo esc_attr( $slug === $active ? 'nav-tab-active' : '' ); ?>">
                         <?php echo esc_html( $module->get_tab_label() ); ?>
@@ -74,8 +80,8 @@ final class Woohoo_Admin_Page {
             </h2>
             <?php endif; ?>
             <div class="woohoo-tab-content" style="margin-top:16px;">
-                <?php if ( isset( $this->modules[ $active ] ) ) : ?>
-                    <?php $this->modules[ $active ]->render_tab(); ?>
+                <?php if ( isset( $visible_modules[ $active ] ) ) : ?>
+                    <?php $visible_modules[ $active ]->render_tab(); ?>
                 <?php endif; ?>
             </div>
         </div>

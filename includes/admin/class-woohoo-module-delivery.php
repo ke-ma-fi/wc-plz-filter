@@ -17,6 +17,10 @@ final class Woohoo_Module_Delivery implements Woohoo_Module_Interface {
         return 'Liefermodus';
     }
 
+    public function is_visible(): bool {
+        return true;
+    }
+
     public function render_tab(): void {
         $this->filter->render_delivery_tab();
     }

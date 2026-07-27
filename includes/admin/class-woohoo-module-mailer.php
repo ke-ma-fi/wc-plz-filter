@@ -17,6 +17,10 @@ final class Woohoo_Module_Mailer implements Woohoo_Module_Interface {
         return 'Mail-Log';
     }
 
+    public function is_visible(): bool {
+        return true;
+    }
+
     public function render_tab(): void {
         $this->mailer->render_tab();
     }
