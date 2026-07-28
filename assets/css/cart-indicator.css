@@ -8,3 +8,11 @@
   transition: outline-color 0.2s ease-out;
 }
 
+/* Custom-Shop-Grid (fgf-Plugin): .pinputs umschließt Mengenfeld UND
+   Add-to-Cart-Button. Eine volle Umrandung wirkt dort wie ein Rahmen um
+   zwei unabhängige Controls – stattdessen nur eine untere Linie. */
+.pinputs.wc-plz-in-cart {
+  outline: none !important;
+  border-bottom: 2px solid #2e7d32 !important;
+}
+
