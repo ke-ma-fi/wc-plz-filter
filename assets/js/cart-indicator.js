@@ -22,9 +22,12 @@
 
   // AJAX-Button bei simple products; bei variablen/externen Produkten verlinkt
   // die Kachel stattdessen auf die Produktseite ("Optionen wählen" etc.) —
-  // generisches .button als Fallback deckt diesen Fall mit ab.
+  // generisches .button als Fallback deckt diesen Fall mit ab. .ptocart ist
+  // der eigene Add-to-Cart-Button des Custom-Shop-Grids (fgf-Plugin).
   function getCartButton(tile) {
-    return tile.querySelector(".add_to_cart_button") || tile.querySelector("a.button, button.button");
+    return tile.querySelector(".add_to_cart_button") ||
+      tile.querySelector(".ptocart") ||
+      tile.querySelector("a.button, button.button");
   }
 
   function applyIndicators(inCartIds) {
@@ -96,6 +99,13 @@
   // WC Classic AJAX: jQuery event is authoritative when available; setTimeout is the fallback.
   // Avoid both firing: the jQuery handler cancels the pending timeout.
   document.addEventListener("click", function (e) {
+    // .ptocart is the custom shop's own add-to-cart button (fgf-Plugin-Grid).
+    // Its AJAX handler lives in that plugin, not here, so we can't assume it
+    // dispatches added_to_cart or any other WC event — always poll via timeout.
+    if (e.target.closest(".ptocart")) {
+      setTimeout(fetchCart, 1200);
+      return;
+    }
     if (!e.target.closest(".add_to_cart_button, .single_add_to_cart_button")) return;
     if (window.jQuery) return; // jQuery path handles this via added_to_cart event below
     setTimeout(fetchCart, 1200);

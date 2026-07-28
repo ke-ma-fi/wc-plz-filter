@@ -76,7 +76,7 @@ final class WC_PLZ_Cart_Indicator {
     }
 
     public function enqueue(): void {
-        if ( is_admin() || ! $this->is_enabled() || ! $this->is_product_listing_page() ) {
+        if ( is_admin() || ! $this->is_enabled() ) {
             return;
         }
 
@@ -90,10 +90,6 @@ final class WC_PLZ_Cart_Indicator {
         wp_localize_script( 'wc-plz-cart-indicator', 'wcPlzCartIndicator', [
             'storeApiUrl' => rest_url( 'wc/store/v1' ),
         ] );
-    }
-
-    private function is_product_listing_page(): bool {
-        return is_shop() || is_product_category() || is_product_tag() || is_product();
     }
 
     /** @param string[] $handles */
