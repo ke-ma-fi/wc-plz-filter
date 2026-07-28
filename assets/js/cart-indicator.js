@@ -22,11 +22,16 @@
 
   // AJAX-Button bei simple products; bei variablen/externen Produkten verlinkt
   // die Kachel stattdessen auf die Produktseite ("Optionen wählen" etc.) —
-  // generisches .button als Fallback deckt diesen Fall mit ab. .ptocart ist
-  // der eigene Add-to-Cart-Button des Custom-Shop-Grids (fgf-Plugin).
+  // generisches .button als Fallback deckt diesen Fall mit ab.
+  //
+  // Custom-Shop-Grid (fgf-Plugin): .ptocart sitzt dort sowohl auf dem
+  // Mengen-<input> als auch auf dem Add-to-Cart-<button> — ein .ptocart-Query
+  // wäre mehrdeutig und träfe zufällig das erste Element (das Mengenfeld).
+  // .pinputs ist der gemeinsame Wrapper beider Controls und eindeutig.
   function getCartButton(tile) {
     return tile.querySelector(".add_to_cart_button") ||
-      tile.querySelector(".ptocart") ||
+      tile.querySelector(".pinputs") ||
+      tile.querySelector("button.ptocart") ||
       tile.querySelector("a.button, button.button");
   }
 
@@ -99,10 +104,11 @@
   // WC Classic AJAX: jQuery event is authoritative when available; setTimeout is the fallback.
   // Avoid both firing: the jQuery handler cancels the pending timeout.
   document.addEventListener("click", function (e) {
-    // .ptocart is the custom shop's own add-to-cart button (fgf-Plugin-Grid).
-    // Its AJAX handler lives in that plugin, not here, so we can't assume it
-    // dispatches added_to_cart or any other WC event — always poll via timeout.
-    if (e.target.closest(".ptocart")) {
+    // button.ptocart is the custom shop's own add-to-cart button (fgf-Plugin-Grid).
+    // Tag-qualified to exclude the quantity <input class="ptocart"> in the same
+    // wrapper. Its AJAX handler lives in that plugin, not here, so we can't
+    // assume it dispatches added_to_cart or any other WC event — always poll.
+    if (e.target.closest("button.ptocart")) {
       setTimeout(fetchCart, 1200);
       return;
     }
