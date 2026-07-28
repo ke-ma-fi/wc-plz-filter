@@ -10,9 +10,22 @@
 
 /* Custom-Shop-Grid (fgf-Plugin): .pinputs umschließt Mengenfeld UND
    Add-to-Cart-Button. Eine volle Umrandung wirkt dort wie ein Rahmen um
-   zwei unabhängige Controls – stattdessen nur eine untere Linie. */
+   zwei unabhängige Controls – stattdessen nur eine untere Linie, per
+   Pseudo-Element abgesetzt, damit Abstand und Dicke unabhängig von der
+   Höhe des Wrappers einstellbar sind. */
 .pinputs.wc-plz-in-cart {
+  position: relative;
   outline: none !important;
-  border-bottom: 2px solid #2e7d32 !important;
+  border-bottom: none !important;
+}
+
+.pinputs.wc-plz-in-cart::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -7px;
+  height: 3px;
+  background: #2e7d32;
 }
 
