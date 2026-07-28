@@ -94,8 +94,8 @@ html body button.wc-plz-mk-toggle {
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
-  width: 34px !important;
-  height: 34px !important;
+  width: 28px !important;
+  height: 28px !important;
   min-width: 0 !important;
   min-height: 0 !important;
   padding: 0 !important;
@@ -105,7 +105,7 @@ html body button.wc-plz-mk-toggle {
   border: 0 !important;
   border-radius: 50% !important;
   cursor: pointer !important;
-  opacity: .75;
+  opacity: .5;
   transition: opacity .2s ease, background .2s ease, transform .15s ease, box-shadow .2s ease;
   backdrop-filter: blur(4px);
   box-shadow: 0 2px 6px rgba(0,0,0,.18) !important;

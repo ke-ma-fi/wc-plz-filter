@@ -18,14 +18,23 @@
   var getProductIdFromEl = tiles.getProductIdFromEl;
   var getAllTiles = tiles.getAllTiles;
 
-  /* ── Kachel-Umrandung anwenden ──────────────── */
+  /* ── Umrandung des Add-to-Cart-Buttons anwenden ─ */
+
+  // AJAX-Button bei simple products; bei variablen/externen Produkten verlinkt
+  // die Kachel stattdessen auf die Produktseite ("Optionen wählen" etc.) —
+  // generisches .button als Fallback deckt diesen Fall mit ab.
+  function getCartButton(tile) {
+    return tile.querySelector(".add_to_cart_button") || tile.querySelector("a.button, button.button");
+  }
 
   function applyIndicators(inCartIds) {
     var allTiles = getAllTiles();
     allTiles.forEach(function (tile) {
       var id = getProductIdFromEl(tile);
       if (!id) return;
-      tile.classList.toggle("wc-plz-in-cart", inCartIds.indexOf(id) !== -1);
+      var btn = getCartButton(tile);
+      if (!btn) return;
+      btn.classList.toggle("wc-plz-in-cart", inCartIds.indexOf(id) !== -1);
     });
   }
 

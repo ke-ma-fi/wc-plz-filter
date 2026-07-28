@@ -1,10 +1,10 @@
 /* WC PLZ-Filter – Cart-Indicator */
 
-/* ─── Grüne Umrandung der Produktkachel, wenn im Warenkorb ─ */
+/* ─── Grüne Umrandung des Add-to-Cart-Buttons, wenn im Warenkorb ─ */
 
 .wc-plz-in-cart {
-  outline: 3px solid #2e7d32 !important;
-  outline-offset: -3px !important;
+  outline: 2px solid #2e7d32 !important;
+  outline-offset: 2px !important;
   transition: outline-color 0.2s ease-out;
 }
 
