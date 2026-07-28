@@ -1,6 +1,6 @@
 /**
  * WC PLZ-Filter – Cart-Indicator
- * Zeigt ein grünes Kreis-Icon auf Produktkacheln wenn das Produkt im Warenkorb liegt.
+ * Umrandet Produktkacheln grün, wenn das Produkt bereits im Warenkorb liegt.
  * Vanilla JS, no jQuery. Nutzt WC Store API für Cart-Daten.
  */
 (function () {
@@ -11,14 +11,6 @@
 
   var storeApiBase = (C.storeApiUrl || "/wp-json/wc/store/v1").replace(/\/$/, "");
 
-  var CART_SVG =
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" ' +
-    'stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" ' +
-    'width="13" height="13" aria-hidden="true">' +
-    '<circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>' +
-    '<path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>' +
-    "</svg>";
-
   /* ── Shared tile utils (from plz-popup.js) ─── */
 
   var tiles = window.wcPlzTiles;
@@ -26,34 +18,14 @@
   var getProductIdFromEl = tiles.getProductIdFromEl;
   var getAllTiles = tiles.getAllTiles;
 
-  /* ── Indicators auf Kacheln anwenden ────────── */
+  /* ── Kachel-Umrandung anwenden ──────────────── */
 
   function applyIndicators(inCartIds) {
     var allTiles = getAllTiles();
     allTiles.forEach(function (tile) {
       var id = getProductIdFromEl(tile);
       if (!id) return;
-
-      var existing = tile.querySelector(".wc-plz-cart-indicator");
-      var inCart = inCartIds.indexOf(id) !== -1;
-
-      if (inCart) {
-        if (!existing) {
-          var wrapper = tiles.getImageWrapper(tile);
-          // Only read computed style when the wrapper hasn't been positioned yet.
-          // Avoids a layout flush per tile on repeat calls.
-          if (!wrapper._plzPositioned) {
-            if (getComputedStyle(wrapper).position === "static") wrapper.style.position = "relative";
-            wrapper._plzPositioned = true;
-          }
-          var indicator = document.createElement("span");
-          indicator.className = "wc-plz-cart-indicator";
-          indicator.innerHTML = CART_SVG;
-          wrapper.appendChild(indicator);
-        }
-      } else {
-        if (existing) existing.remove();
-      }
+      tile.classList.toggle("wc-plz-in-cart", inCartIds.indexOf(id) !== -1);
     });
   }
 

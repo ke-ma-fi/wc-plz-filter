@@ -77,7 +77,7 @@
   function ensureToggleIcon(tile, productId) {
     if (tile.querySelector(".wc-plz-mk-toggle")) return;
     var wrapper = tiles.getImageWrapper(tile);
-    if (getComputedStyle(wrapper).position === "static") wrapper.style.position = "relative";
+    wrapper.classList.add("wc-plz-tile-positioned");
     var btn = document.createElement("button");
     btn.className = "wc-plz-mk-toggle";
     btn.type = "button";

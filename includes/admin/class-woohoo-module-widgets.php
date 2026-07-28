@@ -49,9 +49,9 @@ final class Woohoo_Module_Widgets implements Woohoo_Module_Interface {
                         <label>
                             <input type="hidden" name="<?php echo esc_attr( WC_PLZ_Cart_Indicator::OPTION ); ?>" value="0" />
                             <input type="checkbox" name="<?php echo esc_attr( WC_PLZ_Cart_Indicator::OPTION ); ?>" value="1" <?php checked( get_option( WC_PLZ_Cart_Indicator::OPTION, 1 ), 1 ); ?> />
-                            Grünes Kreis-Icon auf Produktkacheln anzeigen, wenn Produkt im Warenkorb liegt
+                            Grüne Umrandung um die Produktkachel anzeigen, wenn Produkt im Warenkorb liegt
                         </label>
-                        <p class="description">Ja/Nein-Anzeige auf Produkt-Ebene – mehrere Varianten im Cart zählen als ein Icon, keine Stückzahl.</p>
+                        <p class="description">Ja/Nein-Anzeige auf Produkt-Ebene – mehrere Varianten im Cart zählen als eine Umrandung, keine Stückzahl.</p>
                     </td>
                 </tr>
             </table>

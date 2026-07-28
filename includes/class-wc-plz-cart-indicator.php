@@ -2,8 +2,8 @@
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Cart-Indicator: green dot on product tiles when that product is already
- * in the cart. Reads the WC Store API cart client-side; no server state.
+ * Cart-Indicator: green outline around product tiles when that product is
+ * already in the cart. Reads the WC Store API cart client-side; no server state.
  *
  * Self-contained: owns its own option and its own enqueue/page-scoping.
  * WC_PLZ_Filter never references this class directly.
