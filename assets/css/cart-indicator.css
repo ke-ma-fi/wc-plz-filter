@@ -1,0 +1,32 @@
+/* WC PLZ-Filter – Cart-Indicator */
+
+/* ─── Grünes Kreis-Icon rechts oben auf Kacheln ─ */
+
+.wc-plz-cart-indicator {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  background: #2e7d32;
+  border-radius: 50%;
+  color: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.22);
+  pointer-events: none;
+  animation: wc-plz-ci-in 0.2s ease-out both;
+}
+
+@keyframes wc-plz-ci-in {
+  from { opacity: 0; transform: scale(0.7); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.wc-plz-cart-indicator svg {
+  display: block;
+  flex-shrink: 0;
+}
+
