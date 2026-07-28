@@ -320,6 +320,7 @@
         var img  = (prod.images && prod.images[0] && prod.images[0].thumbnail) || "";
         var name = prod.name || "";
         var price = (prod.prices && prod.prices.price_html) ? sanitizePriceHtml(prod.prices.price_html) : "";
+        var permalink = prod.permalink || "";
         return (
           '<div class="wc-plz-merkliste-item" data-product-id="' + id + '">' +
             (img ? '<img class="wc-plz-merkliste-item__img" src="' + escHtml(img) + '" alt="" loading="lazy">' : '') +
@@ -328,10 +329,12 @@
               (price ? '<span class="wc-plz-merkliste-item__price">' + price + "</span>" : "") +
             "</div>" +
             '<div class="wc-plz-merkliste-item__actions">' +
-              '<button type="button" class="wc-plz-merkliste-item__btn wc-plz-merkliste-item__btn--cart" ' +
-                'data-product-id="' + id + '" aria-label="In den Warenkorb">' +
-                '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>' +
-              "</button>" +
+              (permalink ?
+                '<button type="button" class="wc-plz-merkliste-item__btn wc-plz-merkliste-item__btn--goto" ' +
+                  'data-permalink="' + escHtml(permalink) + '" aria-label="Zum Produkt">' +
+                  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M4 4l7.07 17 2.51-7.39L21 11.07z"/></svg>' +
+                "</button>" : ""
+              ) +
               '<button type="button" class="wc-plz-merkliste-item__btn wc-plz-merkliste-item__btn--remove" ' +
                 'data-product-id="' + id + '" aria-label="Von Merkliste entfernen">' +
                 '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>' +
@@ -376,101 +379,6 @@
     return tmp.innerHTML;
   }
 
-  /* ── AJAX Add-to-Cart ──────────────────────── */
-
-  var CART_SVG_OK =
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
-    'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">' +
-    '<polyline points="20 6 9 17 4 12"/></svg>';
-
-  var CART_SVG_ERR =
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
-    'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">' +
-    '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
-
-  function ajaxAddToCart(productId, btn) {
-    if (btn.disabled) return;
-    var origHtml = btn.innerHTML;
-    btn.disabled = true;
-    btn.style.opacity = "0.5";
-
-    var body = new URLSearchParams();
-    body.append("product_id", productId);
-    body.append("quantity", "1");
-
-    var xhr = new XMLHttpRequest();
-    xhr.open("POST", "/?wc-ajax=add_to_cart", true);
-    xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8");
-    xhr.timeout = 8000;
-
-    function reset(delay) {
-      setTimeout(function () {
-        btn.innerHTML = origHtml;
-        btn.disabled = false;
-        btn.style.opacity = "";
-      }, delay);
-    }
-
-    xhr.ontimeout = xhr.onerror = function () {
-      btn.innerHTML = CART_SVG_ERR;
-      btn.style.opacity = "1";
-      reset(1500);
-    };
-
-    xhr.onreadystatechange = function () {
-      if (xhr.readyState !== 4) return;
-
-      if (xhr.status < 200 || xhr.status >= 300) {
-        btn.innerHTML = CART_SVG_ERR;
-        btn.style.opacity = "1";
-        reset(1500);
-        return;
-      }
-
-      var res;
-      try { res = JSON.parse(xhr.responseText); } catch (e) { res = null; }
-
-      if (res && res.error) {
-        btn.innerHTML = CART_SVG_ERR;
-        btn.style.opacity = "1";
-        reset(1500);
-        return;
-      }
-
-      // Success: remove from Merkliste
-      removeProduct(productId);
-      applyTileIcons();
-      updateWidget();
-
-      // Remove item row after brief checkmark feedback
-      btn.innerHTML = CART_SVG_OK;
-      btn.style.opacity = "1";
-      setTimeout(function () {
-        var item = btn.closest(".wc-plz-merkliste-item");
-        if (item) item.remove();
-        if (popover) {
-          var listEl = popover.querySelector("#wc-plz-merkliste-list");
-          if (listEl && !listEl.querySelector(".wc-plz-merkliste-item")) {
-            listEl.innerHTML = '<p class="wc-plz-merkliste-popover__empty">Keine Produkte auf der Merkliste.</p>';
-          }
-        }
-      }, 700);
-
-      // Update WC cart fragments (mini-cart widget etc.)
-      if (res && res.fragments && window.jQuery) {
-        window.jQuery.each(res.fragments, function (key, value) {
-          window.jQuery(key).replaceWith(value);
-        });
-        window.jQuery(document.body).trigger("wc_fragments_refreshed");
-      }
-
-      // Trigger cart indicator refresh
-      document.dispatchEvent(new CustomEvent("wc-blocks_added_to_cart"));
-    };
-
-    xhr.send(body.toString());
-  }
-
   /* ── Event-Delegation ───────────────────────── */
 
   document.addEventListener("click", function (e) {
@@ -513,12 +421,12 @@
       return;
     }
 
-    // In-den-Warenkorb-Button im Popover
-    var cartBtn = e.target.closest(".wc-plz-merkliste-item__btn--cart");
-    if (cartBtn) {
+    // Zum-Produkt-Button im Popover
+    var gotoBtn = e.target.closest(".wc-plz-merkliste-item__btn--goto");
+    if (gotoBtn) {
       e.preventDefault();
-      var productId = parseInt(cartBtn.dataset.productId, 10);
-      if (productId) ajaxAddToCart(productId, cartBtn);
+      var permalink = gotoBtn.dataset.permalink;
+      if (permalink) window.location.href = permalink;
       return;
     }
 

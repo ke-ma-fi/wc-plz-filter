@@ -289,12 +289,12 @@ html body button.wc-plz-mk-toggle.wc-plz-mk-toggle--active:hover { opacity: 1; }
 
 .wc-plz-merkliste-item__btn:active { transform: scale(.92) !important; }
 
-.wc-plz-merkliste-item__btn--cart {
-  background: #e8f5e9 !important;
-  color: #2e7d32 !important;
+.wc-plz-merkliste-item__btn--goto {
+  background: #e8f0fe !important;
+  color: #1a56db !important;
 }
 
-.wc-plz-merkliste-item__btn--cart:hover { background: #c8e6c9 !important; }
+.wc-plz-merkliste-item__btn--goto:hover { background: #d2e3fc !important; }
 
 .wc-plz-merkliste-item__btn--remove {
   background: #fce4e4 !important;
