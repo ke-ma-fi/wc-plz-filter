@@ -14,10 +14,52 @@ final class WC_PLZ_Cart_Indicator {
 
     const OPTION = 'wc_plz_cart_indicator_enabled';
 
+    /**
+     * Namespace under which the parent-product-id extension is exposed in
+     * the Store API cart response, at item.extensions[STORE_API_NAMESPACE].
+     */
+    const STORE_API_NAMESPACE = 'wc-plz-filter';
+
     private function __construct() {
         add_action( 'admin_init', [ $this, 'register_setting' ] );
         add_action( 'wp_enqueue_scripts', [ $this, 'enqueue' ] );
         add_filter( 'wc_plz_nowprocket_handles', [ $this, 'add_nowprocket_handle' ] );
+        add_action( 'woocommerce_blocks_loaded', [ $this, 'register_store_api_extension' ] );
+    }
+
+    /**
+     * The Store API cart response has no parent-product-id field: for a
+     * variation cart item, 'id' is the variation's own post ID, not the
+     * parent product's. Listing tiles are keyed by parent product ID, so
+     * without this the border never matched variable products. Exposing
+     * $product->get_parent_id() (0 for non-variations) here lets the
+     * frontend match variation cart items back to their tile.
+     */
+    public function register_store_api_extension(): void {
+        if ( ! $this->is_enabled() ) {
+            return;
+        }
+
+        woocommerce_store_api_register_endpoint_data( [
+            'endpoint'        => \Automattic\WooCommerce\StoreApi\Schemas\V1\CartItemSchema::IDENTIFIER,
+            'namespace'       => self::STORE_API_NAMESPACE,
+            'data_callback'   => function ( $cart_item ) {
+                $product = $cart_item['data'] ?? null;
+                return [
+                    'parent_id' => ( $product instanceof WC_Product ) ? $product->get_parent_id() : 0,
+                ];
+            },
+            'schema_callback' => function () {
+                return [
+                    'parent_id' => [
+                        'description' => __( 'Parent product ID for variations, 0 for simple products.', 'wc-plz-filter' ),
+                        'type'        => 'integer',
+                        'readonly'    => true,
+                    ],
+                ];
+            },
+            'schema_type'     => ARRAY_A,
+        ] );
     }
 
     public function is_enabled(): bool {

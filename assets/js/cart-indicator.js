@@ -57,13 +57,18 @@
   }
 
   // Liefert deduplizierte übergeordnete Produkt-IDs aus allen Cart-Items.
-  // Für Varianten ist parent_id die übergeordnete ID; für simple products ist id selbst korrekt.
+  // Die Store API liefert kein natives parent_id-Feld – bei Varianten ist
+  // "id" die Varianten-ID, nicht die des übergeordneten Produkts. Das
+  // Plugin erweitert die Cart-Response serverseitig (siehe
+  // WC_PLZ_Cart_Indicator::register_store_api_extension) um genau dieses
+  // Feld unter extensions["wc-plz-filter"].parent_id (0 bei simple products).
   function extractParentIds(cart) {
     if (!cart || !Array.isArray(cart.items)) return [];
     var seen = {};
     var ids = [];
     cart.items.forEach(function (item) {
-      var id = item.parent_id || item.id;
+      var ext = item.extensions && item.extensions["wc-plz-filter"];
+      var id = (ext && ext.parent_id) || item.id;
       if (id && !seen[id]) {
         seen[id] = true;
         ids.push(id);
