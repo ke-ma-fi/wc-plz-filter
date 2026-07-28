@@ -56,6 +56,12 @@ final class WC_PLZ_Filter {
         require_once WC_PLZ_FILTER_DIR . 'includes/class-wc-plz-reminder.php';
         $reminder = WC_PLZ_Reminder::instance();
 
+        require_once WC_PLZ_FILTER_DIR . 'includes/class-wc-plz-merkliste.php';
+        WC_PLZ_Merkliste::instance();
+
+        require_once WC_PLZ_FILTER_DIR . 'includes/class-wc-plz-cart-indicator.php';
+        WC_PLZ_Cart_Indicator::instance();
+
         if ( is_admin() && ! wp_doing_ajax() ) {
             require_once WC_PLZ_FILTER_DIR . 'includes/admin/interface-woohoo-module.php';
             require_once WC_PLZ_FILTER_DIR . 'includes/admin/class-woohoo-admin-page.php';
@@ -64,6 +70,7 @@ final class WC_PLZ_Filter {
             require_once WC_PLZ_FILTER_DIR . 'includes/admin/class-woohoo-module-updater.php';
             require_once WC_PLZ_FILTER_DIR . 'includes/admin/class-woohoo-module-reminder.php';
             require_once WC_PLZ_FILTER_DIR . 'includes/admin/class-woohoo-module-mailer.php';
+            require_once WC_PLZ_FILTER_DIR . 'includes/admin/class-woohoo-module-widgets.php';
 
             $admin_page = Woohoo_Admin_Page::instance();
             $admin_page->register_module( new Woohoo_Module_Delivery( $this ) );
@@ -71,6 +78,7 @@ final class WC_PLZ_Filter {
             $admin_page->register_module( new Woohoo_Module_Updater( $this->updater ) );
             $admin_page->register_module( new Woohoo_Module_Reminder( $reminder ) );
             $admin_page->register_module( new Woohoo_Module_Mailer( $mailer ) );
+            $admin_page->register_module( new Woohoo_Module_Widgets() );
         }
 
         add_action( 'admin_init', [ $this, 'register_settings' ] );
@@ -163,8 +171,6 @@ final class WC_PLZ_Filter {
             'badge_tooltip_post'     => 'Für Ihre PLZ ist Postversand verfügbar. Einige Frischeprodukte sind bei Versand nicht erhältlich und werden Ihnen nicht angezeigt. Zum Ändern bitte klicken.',
             'badge_tooltip_skipped'  => 'Noch keine Lieferoption gewählt – klicken Sie hier, um Ihre PLZ einzugeben und die passenden Produkte zu sehen.',
             'popup_trigger'          => 'cart',
-            'merkliste_enabled'      => 1,
-            'cart_indicator_enabled' => 1,
         ] );
 
         return $this->settings_cache;
@@ -748,30 +754,6 @@ final class WC_PLZ_Filter {
             'badgeCtaText'         => 'PLZ eingeben',
             'popupTrigger'         => $settings['popup_trigger'],
         ] );
-
-        $on_product_page = is_shop() || is_product_category() || is_product_tag() || is_product();
-
-        if ( (int) $settings['merkliste_enabled'] === 1 ) {
-            wp_enqueue_style( 'wc-plz-merkliste', $url . 'assets/css/merkliste.css', [ 'wc-plz-filter' ], self::VERSION );
-            wp_enqueue_script( 'wc-plz-merkliste', $url . 'assets/js/merkliste.js', [ 'wc-plz-filter' ], self::VERSION, [
-                'in_footer' => true,
-                'strategy'  => 'defer',
-            ] );
-            wp_localize_script( 'wc-plz-merkliste', 'wcPlzMerkliste', [
-                'storeApiUrl' => rest_url( 'wc/store/v1' ),
-            ] );
-        }
-
-        if ( (int) $settings['cart_indicator_enabled'] === 1 && $on_product_page ) {
-            wp_enqueue_style( 'wc-plz-cart-indicator', $url . 'assets/css/cart-indicator.css', [ 'wc-plz-filter' ], self::VERSION );
-            wp_enqueue_script( 'wc-plz-cart-indicator', $url . 'assets/js/cart-indicator.js', [ 'wc-plz-filter' ], self::VERSION, [
-                'in_footer' => true,
-                'strategy'  => 'defer',
-            ] );
-            wp_localize_script( 'wc-plz-cart-indicator', 'wcPlzCartIndicator', [
-                'storeApiUrl' => rest_url( 'wc/store/v1' ),
-            ] );
-        }
     }
 
     /**
@@ -780,7 +762,11 @@ final class WC_PLZ_Filter {
      * "Delay JavaScript Execution" — dafür braucht es data-no-defer zusätzlich.
      */
     public function add_nowprocket_attr( string $tag, string $handle ): string {
-        $our_handles = [ 'wc-plz-filter', 'wc-plz-merkliste', 'wc-plz-cart-indicator' ];
+        /**
+         * Other plugin scripts (Merkliste, Cart-Indicator, ...) hook this to
+         * add their own handle without WC_PLZ_Filter needing to know about them.
+         */
+        $our_handles = apply_filters( 'wc_plz_nowprocket_handles', [ 'wc-plz-filter' ] );
         if ( ! in_array( $handle, $our_handles, true ) ) {
             return $tag;
         }
@@ -890,17 +876,13 @@ final class WC_PLZ_Filter {
                 </span>
                 <span id="wc-plz-badge-tooltip" class="wc-plz-badge__tooltip" role="tooltip"></span>
             </button>
-            <?php if ( (int) $s['merkliste_enabled'] === 1 ) : ?>
-            <button id="wc-plz-merkliste-btn"
-                    class="wc-plz-merkliste-btn"
-                    aria-label="Merkliste öffnen"
-                    type="button">
-                <span class="wc-plz-merkliste-btn__icon" aria-hidden="true">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512" fill="currentColor" width="16" height="18" aria-hidden="true"><path d="M240 432L64 432c-8.8 0-16-7.2-16-16L48 96c0-8.8 7.2-16 16-16l320 0c8.8 0 16 7.2 16 16l0 176-88 0c-39.8 0-72 32.2-72 72l0 88zM380.1 320L288 412.1 288 344c0-13.3 10.7-24 24-24l68.1 0zM0 416c0 35.3 28.7 64 64 64l197.5 0c17 0 33.3-6.7 45.3-18.7L429.3 338.7c12-12 18.7-28.3 18.7-45.3L448 96c0-35.3-28.7-64-64-64L64 32C28.7 32 0 60.7 0 96L0 416z"/></svg>
-                </span>
-                <span id="wc-plz-merkliste-count" class="wc-plz-merkliste-btn__count" aria-hidden="true"></span>
-            </button>
-            <?php endif; ?>
+            <?php
+            /**
+             * Lets other widgets (Merkliste, ...) render their own button into
+             * the same fixed-position group without this class knowing about them.
+             */
+            do_action( 'wc_plz_widget_group_extra' );
+            ?>
         </div>
         <?php
     }
@@ -960,8 +942,6 @@ final class WC_PLZ_Filter {
             'min_order_local'        => max( 0, (int) ( $input['min_order_local'] ?? 30 ) ),
             'min_order_post'         => max( 0, (int) ( $input['min_order_post'] ?? 30 ) ),
             'popup_trigger'          => in_array( $input['popup_trigger'] ?? '', [ 'immediate', 'cart' ], true ) ? $input['popup_trigger'] : 'cart',
-            'merkliste_enabled'      => ! empty( $input['merkliste_enabled'] ) ? 1 : 0,
-            'cart_indicator_enabled' => ! empty( $input['cart_indicator_enabled'] ) ? 1 : 0,
         ];
     }
 
@@ -1130,31 +1110,6 @@ final class WC_PLZ_Filter {
                         <td>
                             <textarea name="<?php echo esc_attr( $opt ); ?>[badge_tooltip_skipped]" rows="2" class="large-text"><?php echo esc_textarea( $settings['badge_tooltip_skipped'] ); ?></textarea>
                             <p class="description">Wird angezeigt, wenn der Kunde das Popup übersprungen hat.</p>
-                        </td>
-                    </tr>
-                </table>
-
-                <h2 class="title">Zusatz-Features</h2>
-                <p>Beim Deaktivieren der Merkliste bleiben vorhandene Browser-Daten der Kunden unberührt.</p>
-                <table class="form-table">
-                    <tr>
-                        <th>Merkliste</th>
-                        <td>
-                            <label>
-                                <input type="checkbox" name="<?php echo esc_attr( $opt ); ?>[merkliste_enabled]" value="1" <?php checked( $settings['merkliste_enabled'], 1 ); ?> />
-                                Merkliste-Widget, Notizblock-Icon auf Kacheln und Popover-Liste aktivieren
-                            </label>
-                            <p class="description">Speicherung rein im Browser (LocalStorage) – keine Account-Bindung, kein Server-Sync. Getrennt von „Meine Lieblingsprodukte".</p>
-                        </td>
-                    </tr>
-                    <tr>
-                        <th>Cart-Indicator</th>
-                        <td>
-                            <label>
-                                <input type="checkbox" name="<?php echo esc_attr( $opt ); ?>[cart_indicator_enabled]" value="1" <?php checked( $settings['cart_indicator_enabled'], 1 ); ?> />
-                                Grünes Kreis-Icon auf Produktkacheln anzeigen, wenn Produkt im Warenkorb liegt
-                            </label>
-                            <p class="description">Ja/Nein-Anzeige auf Produkt-Ebene – mehrere Varianten im Cart zählen als ein Icon, keine Stückzahl.</p>
                         </td>
                     </tr>
                 </table>
