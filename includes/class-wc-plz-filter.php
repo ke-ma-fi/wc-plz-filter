@@ -25,6 +25,19 @@ final class WC_PLZ_Filter {
             return;
         }
         update_option( 'wc_plz_rocket_busted', self::VERSION, false );
+        self::bust_rocket_cache();
+    }
+
+    /**
+     * Purges WP Rocket's page + minify cache. Called above once per plugin
+     * VERSION bump, but that guard never fires for a settings toggle (the
+     * version doesn't change) - so modules whose option flips what markup/
+     * assets get emitted (WC_PLZ_Merkliste, WC_PLZ_Cart_Indicator) call this
+     * directly from their own add_option_ / update_option_ hooks. Without
+     * it, a previously-cached page keeps serving the pre-toggle HTML (no
+     * widget script/markup) until the cache naturally expires.
+     */
+    public static function bust_rocket_cache(): void {
         if ( function_exists( 'rocket_clean_minify' ) ) {
             rocket_clean_minify();
         }

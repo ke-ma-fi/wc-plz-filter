@@ -26,6 +26,11 @@ final class WC_PLZ_Cart_Indicator {
         add_action( 'wp_enqueue_scripts', [ $this, 'enqueue' ] );
         add_filter( 'wc_plz_nowprocket_handles', [ $this, 'add_nowprocket_handle' ] );
         add_action( 'woocommerce_blocks_loaded', [ $this, 'register_store_api_extension' ] );
+        // Toggling this on/off changes what markup/assets get emitted, so a
+        // cached page must be purged or WP Rocket keeps serving the
+        // pre-toggle version. See WC_PLZ_Filter::bust_rocket_cache().
+        add_action( 'add_option_' . self::OPTION, [ 'WC_PLZ_Filter', 'bust_rocket_cache' ] );
+        add_action( 'update_option_' . self::OPTION, [ 'WC_PLZ_Filter', 'bust_rocket_cache' ] );
     }
 
     /**
