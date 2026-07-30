@@ -5,7 +5,7 @@ final class WC_PLZ_Filter {
 
     use WC_PLZ_Singleton;
 
-    const VERSION         = '2.10.6';
+    const VERSION         = '2.12.1';
     const COOKIE          = 'wc_delivery_mode';
     const OPT             = 'wc_plz_filter_v2';
     const CACHE           = 'wc_plz_local_codes';
@@ -61,6 +61,10 @@ final class WC_PLZ_Filter {
 
         require_once WC_PLZ_FILTER_DIR . 'includes/class-wc-plz-cart-indicator.php';
         WC_PLZ_Cart_Indicator::instance();
+
+        require_once WC_PLZ_FILTER_DIR . 'includes/class-woohoo-po-aggregator.php';
+        require_once WC_PLZ_FILTER_DIR . 'includes/class-woohoo-product-overview.php';
+        Woohoo_Product_Overview::instance();
 
         if ( is_admin() && ! wp_doing_ajax() ) {
             require_once WC_PLZ_FILTER_DIR . 'includes/admin/interface-woohoo-module.php';
