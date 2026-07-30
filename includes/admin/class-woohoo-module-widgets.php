@@ -98,7 +98,7 @@ final class Woohoo_Module_Widgets implements Woohoo_Module_Interface {
                     </td>
                 </tr>
                 <tr>
-                    <td><strong>Pfad / URL</strong></td>
+                    <td><strong>URL</strong></td>
                     <td><code><?php echo esc_html( $status['url'] ); ?></code></td>
                 </tr>
                 <tr>
@@ -127,7 +127,6 @@ final class Woohoo_Module_Widgets implements Woohoo_Module_Interface {
 
     private function render_product_overview_fields(): void {
         $settings = get_option( Woohoo_Product_Overview::OPTION_SETTINGS, [] );
-        $path         = ! empty( $settings['path'] ) ? $settings['path'] : Woohoo_Product_Overview::DEFAULT_PATH;
         $session_days = ! empty( $settings['session_days'] ) ? (int) $settings['session_days'] : 7;
         $has_password = ! empty( $settings['password_hash'] );
         $enabled      = get_option( Woohoo_Product_Overview::OPTION_ENABLED, 0 );
@@ -142,19 +141,13 @@ final class Woohoo_Module_Widgets implements Woohoo_Module_Interface {
                         <input type="checkbox" name="<?php echo esc_attr( Woohoo_Product_Overview::OPTION_ENABLED ); ?>" value="1" <?php checked( $enabled, 1 ); ?> />
                         Seite aktivieren
                     </label>
+                    <p class="description">
+                        Erreichbar unter:
+                        <code><?php echo esc_html( home_url( '/' . Woohoo_Product_Overview::DEFAULT_PATH . '/' ) ); ?></code>
+                    </p>
                     <?php if ( ! $has_password ) : ?>
                         <p class="description" style="color:#d63638;">Bitte unten ein Passwort vergeben, sonst bleibt die Seite für alle ohne Woohoo-Berechtigung unzugänglich.</p>
                     <?php endif; ?>
-                </td>
-            </tr>
-            <tr>
-                <th>Pfad</th>
-                <td>
-                    <input type="text" name="<?php echo esc_attr( $opt ); ?>[path]" value="<?php echo esc_attr( $path ); ?>" class="regular-text" />
-                    <p class="description">
-                        Aktuell erreichbar unter:
-                        <code><?php echo esc_html( home_url( '/' . $path . '/' ) ); ?></code>
-                    </p>
                 </td>
             </tr>
             <tr>

@@ -4,12 +4,12 @@ defined( 'ABSPATH' ) || exit;
 /**
  * "Produktübersicht" - a native, toggleable replacement for the two
  * "DT konsolidierte Produktliste" n8n workflows. Auto-provisions a real WP
- * page at an admin-configured path (so it renders inside the shop's own
- * theme like any other page), gates it behind a shared password (staff
- * without a WP account use this; users with WC_PLZ_Filter::MANAGE_CAP skip
- * it), and serves the aggregated data - built by Woohoo_PO_Aggregator - via
- * a REST endpoint fetched client-side, never baked into the page's stored
- * content, so a page-cache plugin (WP Rocket is active site-wide, see
+ * page at a fixed path (DEFAULT_PATH - not admin-configurable, see
+ * sync_page()), gates it behind a shared password (staff without a WP
+ * account use this; users with WC_PLZ_Filter::MANAGE_CAP skip it), and
+ * serves the aggregated data - built by Woohoo_PO_Aggregator - via a REST
+ * endpoint fetched client-side, never baked into the page's stored content,
+ * so a page-cache plugin (WP Rocket is active site-wide, see
  * WC_PLZ_Filter::maybe_bust_rocket_cache()) can never serve one visitor's
  * order data to the next.
  */
@@ -49,7 +49,7 @@ final class Woohoo_Product_Overview {
 
         // Fires on both the very first save (add_option_*) and every
         // subsequent one (update_option_*) so the provisioned page always
-        // reflects the latest enabled/path settings.
+        // reflects the latest enabled state.
         foreach ( [ self::OPTION_ENABLED, self::OPTION_SETTINGS ] as $option ) {
             add_action( "add_option_{$option}", [ $this, 'sync_page' ] );
             add_action( "update_option_{$option}", [ $this, 'sync_page' ] );
@@ -63,7 +63,6 @@ final class Woohoo_Product_Overview {
 
     private static function defaults(): array {
         return [
-            'path'          => self::DEFAULT_PATH,
             'password_hash' => '',
             'session_days'  => 7,
         ];
@@ -160,7 +159,6 @@ final class Woohoo_Product_Overview {
         // hash for "no password submitted".
         if ( is_array( $input ) && array_key_exists( 'password_hash', $input ) && ! array_key_exists( 'password', $input ) ) {
             return [
-                'path'          => (string) ( $input['path'] ?? self::DEFAULT_PATH ),
                 'password_hash' => (string) ( $input['password_hash'] ?? '' ),
                 'session_days'  => max( 1, min( 90, (int) ( $input['session_days'] ?? 7 ) ) ),
             ];
@@ -168,11 +166,6 @@ final class Woohoo_Product_Overview {
 
         $input   = is_array( $input ) ? $input : [];
         $current = wp_parse_args( get_option( self::OPTION_SETTINGS, [] ), self::defaults() );
-
-        $path = sanitize_title( (string) ( $input['path'] ?? '' ) );
-        if ( $path === '' ) {
-            $path = self::DEFAULT_PATH;
-        }
 
         // Blank submission keeps the existing password - the field name is
         // deliberately "password" (never "password_hash") so a client can
@@ -184,7 +177,6 @@ final class Woohoo_Product_Overview {
         }
 
         return [
-            'path'          => $path,
             'password_hash' => $password_hash,
             'session_days'  => max( 1, min( 90, (int) ( $input['session_days'] ?? 7 ) ) ),
         ];
@@ -198,10 +190,9 @@ final class Woohoo_Product_Overview {
     public function sync_page(): void {
         $this->settings_cache = null;
 
-        $enabled  = $this->is_enabled();
-        $settings = $this->get_settings();
-        $page_id  = (int) get_option( self::OPTION_PAGE_ID, 0 );
-        $page     = $page_id ? get_post( $page_id ) : null;
+        $enabled = $this->is_enabled();
+        $page_id = (int) get_option( self::OPTION_PAGE_ID, 0 );
+        $page    = $page_id ? get_post( $page_id ) : null;
 
         if ( ! $enabled ) {
             if ( $page && $page->post_type === 'page' && $page->post_status !== 'trash' && $page->post_status !== 'draft' ) {
@@ -213,7 +204,7 @@ final class Woohoo_Product_Overview {
         if ( ! $page || $page->post_type !== 'page' || $page->post_status === 'trash' ) {
             $new_id = wp_insert_post( [
                 'post_title'     => 'Produktübersicht',
-                'post_name'      => $settings['path'],
+                'post_name'      => self::DEFAULT_PATH,
                 'post_status'    => 'publish',
                 'post_type'      => 'page',
                 'post_content'   => '',
@@ -231,8 +222,8 @@ final class Woohoo_Product_Overview {
         if ( $page->post_status !== 'publish' ) {
             $update['post_status'] = 'publish';
         }
-        if ( $page->post_name !== $settings['path'] ) {
-            $update['post_name'] = $settings['path'];
+        if ( $page->post_name !== self::DEFAULT_PATH ) {
+            $update['post_name'] = self::DEFAULT_PATH;
         }
         if ( count( $update ) > 1 ) {
             wp_update_post( $update );
@@ -251,8 +242,7 @@ final class Woohoo_Product_Overview {
 
         return [
             'enabled'       => $this->is_enabled(),
-            'path'          => $settings['path'],
-            'url'           => home_url( '/' . $settings['path'] . '/' ),
+            'url'           => home_url( '/' . self::DEFAULT_PATH . '/' ),
             'has_password'  => $settings['password_hash'] !== '',
             'session_days'  => (int) $settings['session_days'],
             'page_id'       => $page_id,
