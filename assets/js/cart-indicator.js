@@ -46,6 +46,24 @@
     });
   }
 
+  function closestTile(el) {
+    return el.closest("[class*='pdb'], .products li[class*='post-']");
+  }
+
+  // Shows the indicator the instant an add-to-cart click fires instead of
+  // waiting on a network round trip - the Store API fetch below, or (worse)
+  // the fixed setTimeout guess used for the fgf grid, which on a slow
+  // request can fire before the server has actually persisted the cart (see
+  // the click handler further down). fetchCart()'s subsequent
+  // applyIndicators() call fully re-derives every tile's state from the real
+  // cart shortly after, so a failed add (out of stock, etc.) self-corrects.
+  function applyOptimisticIndicator(clickedEl) {
+    var tile = closestTile(clickedEl);
+    if (!tile) return;
+    var btn = getCartButton(tile);
+    if (btn) btn.classList.add("wc-plz-in-cart");
+  }
+
   /* ── WC Store API: Cart abrufen ─────────────── */
 
   var fetchInFlight = false;
@@ -108,10 +126,22 @@
     // Tag-qualified to exclude the quantity <input class="ptocart"> in the same
     // wrapper. Its AJAX handler lives in that plugin, not here, so we can't
     // assume it dispatches added_to_cart or any other WC event — always poll.
-    if (e.target.closest("button.ptocart")) {
+    var ptocartBtn = e.target.closest("button.ptocart");
+    if (ptocartBtn) {
+      applyOptimisticIndicator(ptocartBtn);
       setTimeout(fetchCart, 1200);
       return;
     }
+
+    // .ajax_add_to_cart is only present when the button actually triggers an
+    // AJAX add — WooCommerce omits it for variable/grouped/external products,
+    // where the same .add_to_cart_button class just links to the product
+    // page instead of adding anything. Only real adds get the optimistic
+    // indicator; the broader check below (unqualified) still covers those
+    // other cases for the reconciling fetch.
+    var ajaxBtn = e.target.closest(".add_to_cart_button.ajax_add_to_cart");
+    if (ajaxBtn) applyOptimisticIndicator(ajaxBtn);
+
     if (!e.target.closest(".add_to_cart_button, .single_add_to_cart_button")) return;
     if (window.jQuery) return; // jQuery path handles this via added_to_cart event below
     setTimeout(fetchCart, 1200);
