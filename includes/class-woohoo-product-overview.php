@@ -134,8 +134,28 @@ final class Woohoo_Product_Overview {
         }
     }
 
+    const DEBUG_TRANSIENT = 'woohoo_po_last_save_debug';
+
+    /**
+     * Records what this save attempt actually saw, into a transient (not
+     * just the error_log) so it's visible in the admin UI right after the
+     * options.php redirect even without log access - see
+     * Woohoo_Module_Widgets::render_product_overview_status(). One-shot:
+     * the status panel deletes it after displaying.
+     */
+    private static function record_save_debug( array $data ): void {
+        $data['time'] = current_time( 'mysql' );
+        set_transient( self::DEBUG_TRANSIENT, $data, 5 * MINUTE_IN_SECONDS );
+        self::debug_log( 'sanitize_settings: ' . wp_json_encode( $data ) );
+    }
+
     public function sanitize_settings( $input ): array {
         $this->settings_cache = null;
+
+        $post_had_option_key = isset( $_POST[ self::OPTION_SETTINGS ] );
+        $post_had_password_key = is_array( $_POST[ self::OPTION_SETTINGS ] ?? null )
+            && array_key_exists( 'password', $_POST[ self::OPTION_SETTINGS ] );
+
         $raw_input_keys = is_array( $input ) ? implode( ',', array_keys( $input ) ) : gettype( $input );
         $input   = is_array( $input ) ? $input : [];
         $current = wp_parse_args( get_option( self::OPTION_SETTINGS, [] ), self::defaults() );
@@ -160,14 +180,21 @@ final class Woohoo_Product_Overview {
             'session_days'  => max( 1, min( 90, (int) ( $input['session_days'] ?? 7 ) ) ),
         ];
 
-        self::debug_log( sprintf(
-            'sanitize_settings: received keys=[%s], password submitted=%s, resulting path=%s, has_password=%s, session_days=%d',
-            $raw_input_keys,
-            $raw_password !== '' ? 'yes' : 'no',
-            $result['path'],
-            $result['password_hash'] !== '' ? 'yes' : 'no',
-            $result['session_days']
-        ) );
+        self::record_save_debug( [
+            // Raw superglobal, checked directly - independent of whatever
+            // sanitize_option()/register_setting() did to $input before
+            // handing it to us, so this can catch a WAF/security plugin
+            // stripping the field before we ever see it (some strip POST
+            // keys/values that look like a password field by name).
+            'post_had_option_key'    => $post_had_option_key ? 'yes' : 'no',
+            'post_had_password_key'  => $post_had_password_key ? 'yes' : 'no',
+            'sanitize_input_keys'    => $raw_input_keys,
+            'password_len_submitted' => strlen( $raw_password ),
+            'had_password_before'    => $current['password_hash'] !== '' ? 'yes' : 'no',
+            'has_password_after'     => $result['password_hash'] !== '' ? 'yes' : 'no',
+            'resulting_path'         => $result['path'],
+            'resulting_session_days' => $result['session_days'],
+        ] );
 
         return $result;
     }
@@ -258,6 +285,20 @@ final class Woohoo_Product_Overview {
 
     private function get_page_id(): int {
         return (int) get_option( self::OPTION_PAGE_ID, 0 );
+    }
+
+    /**
+     * One-shot read of the last save-attempt diagnostic recorded by
+     * sanitize_settings() (see record_save_debug()). Consumes the transient
+     * so it only shows up once, right after the redirect from options.php.
+     */
+    public function consume_last_save_debug(): ?array {
+        $data = get_transient( self::DEBUG_TRANSIENT );
+        if ( $data === false ) {
+            return null;
+        }
+        delete_transient( self::DEBUG_TRANSIENT );
+        return $data;
     }
 
     /* ── Auth cookie (stateless, self-verifying) ────────────────────
