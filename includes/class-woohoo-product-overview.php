@@ -56,10 +56,7 @@ final class Woohoo_Product_Overview {
         }
 
         add_action( 'template_redirect', [ $this, 'guard_page' ], 0 );
-        add_filter( 'the_content', [ $this, 'render_page_content' ] );
-        add_action( 'wp_enqueue_scripts', [ $this, 'enqueue' ] );
         add_action( 'rest_api_init', [ $this, 'register_rest_routes' ] );
-        add_filter( 'wp_robots', [ $this, 'maybe_noindex' ] );
     }
 
     /* ── Settings ────────────────────────────────── */
@@ -338,6 +335,13 @@ final class Woohoo_Product_Overview {
 
     /* ── Front-end gate ──────────────────────────── */
 
+    /**
+     * Renders entirely standalone (own doctype/head/body, exit - no
+     * get_header()/get_footer(), no theme template, no WooCommerce nav) for
+     * BOTH the locked and unlocked states, same as the password form always
+     * did. This is deliberate: the page must never depend on (or be styled
+     * by) the active theme - it's an internal staff tool, not a shop page.
+     */
     public function guard_page(): void {
         $page_id = $this->get_page_id();
         if ( ! $page_id || ! is_page( $page_id ) ) {
@@ -353,12 +357,12 @@ final class Woohoo_Product_Overview {
             return;
         }
 
-        if ( current_user_can( WC_PLZ_Filter::MANAGE_CAP ) ) {
-            return; // staff already authenticated via wp-admin
-        }
+        $authorized = current_user_can( WC_PLZ_Filter::MANAGE_CAP ) // staff already authenticated via wp-admin
+            || $this->has_valid_auth_cookie();
 
-        if ( $this->has_valid_auth_cookie() ) {
-            return;
+        if ( $authorized ) {
+            $this->render_overview_page();
+            exit;
         }
 
         $error = '';
@@ -423,76 +427,62 @@ body{font-family:Arial,sans-serif;background:#f5f5f5;display:flex;min-height:100
         <?php
     }
 
-    /* ── Page content shell (results are fetched client-side, never
-     * persisted into post_content - see the class docblock) ────── */
+    /**
+     * The authenticated view: own doctype/head/body, no theme, no
+     * WooCommerce nav/header/footer. CSS/JS are linked directly (not via
+     * wp_enqueue_*) since this never goes through wp_head()/wp_footer().
+     * Results are fetched client-side via REST, never persisted into any
+     * post_content - see the class docblock for why (page-cache safety).
+     */
+    private function render_overview_page(): void {
+        status_header( 200 );
 
-    public function render_page_content( string $content ): string {
-        $page_id = $this->get_page_id();
-        if ( ! $page_id || ! is_page( $page_id ) || ! in_the_loop() || ! is_main_query() ) {
-            return $content;
-        }
-
-        ob_start();
-        ?>
-        <div id="woohoo-po" class="woohoo-po">
-            <div class="woohoo-po-card">
-                <h2 class="woohoo-po-card__header">Produktübersicht</h2>
-                <div class="woohoo-po-card__body">
-                    <div class="woohoo-po-field" id="woohoo-po-date-field">
-                        <label for="woohoo-po-date">Lieferdatum</label>
-                        <input type="date" id="woohoo-po-date" />
-                    </div>
-                    <div class="woohoo-po-field">
-                        <label for="woohoo-po-plz">PLZ ausschließen</label>
-                        <input type="text" id="woohoo-po-plz" placeholder="z. B. 63679, 37170" />
-                        <p class="woohoo-po-hint">Mehrere PLZ kommagetrennt eingeben</p>
-                    </div>
-                    <div class="woohoo-po-field">
-                        <label>Versandart</label>
-                        <div class="woohoo-po-radios">
-                            <label><input type="radio" name="woohoo-po-mode" value="local" checked /> Lokal</label>
-                            <label><input type="radio" name="woohoo-po-mode" value="post" /> Postversand</label>
-                        </div>
-                    </div>
-                    <button type="button" id="woohoo-po-submit">Übersicht abrufen</button>
-                    <div id="woohoo-po-status" class="woohoo-po-status" aria-live="polite"></div>
+        $url      = WC_PLZ_FILTER_URL;
+        $rest_url = rest_url( self::REST_NAMESPACE . '/product-overview' );
+        $nonce    = wp_create_nonce( self::NONCE_QUERY );
+        ?><!doctype html>
+<html <?php language_attributes(); ?>>
+<head>
+<meta charset="<?php bloginfo( 'charset' ); ?>">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Produktübersicht</title>
+<link rel="stylesheet" href="<?php echo esc_url( $url . 'assets/css/product-overview.css' ); ?>?ver=<?php echo esc_attr( WC_PLZ_Filter::VERSION ); ?>" />
+</head>
+<body>
+<div id="woohoo-po" class="woohoo-po">
+    <div class="woohoo-po-card">
+        <h2 class="woohoo-po-card__header">Produktübersicht</h2>
+        <div class="woohoo-po-card__body">
+            <div class="woohoo-po-field" id="woohoo-po-date-field">
+                <label for="woohoo-po-date">Lieferdatum</label>
+                <input type="date" id="woohoo-po-date" />
+            </div>
+            <div class="woohoo-po-field">
+                <label for="woohoo-po-plz">PLZ ausschließen</label>
+                <input type="text" id="woohoo-po-plz" placeholder="z. B. 63679, 37170" />
+                <p class="woohoo-po-hint">Mehrere PLZ kommagetrennt eingeben</p>
+            </div>
+            <div class="woohoo-po-field">
+                <label>Versandart</label>
+                <div class="woohoo-po-radios">
+                    <label><input type="radio" name="woohoo-po-mode" value="local" checked /> Lokal</label>
+                    <label><input type="radio" name="woohoo-po-mode" value="post" /> Postversand</label>
                 </div>
             </div>
-            <div id="woohoo-po-results" class="woohoo-po-results"></div>
+            <button type="button" id="woohoo-po-submit">Übersicht abrufen</button>
+            <div id="woohoo-po-status" class="woohoo-po-status" aria-live="polite"></div>
         </div>
+    </div>
+    <div id="woohoo-po-results" class="woohoo-po-results"></div>
+</div>
+<script>
+    var woohooPO = <?php echo wp_json_encode( [ 'restUrl' => $rest_url, 'nonce' => $nonce ] ); ?>;
+</script>
+<script src="<?php echo esc_url( $url . 'assets/js/product-overview.js' ); ?>?ver=<?php echo esc_attr( WC_PLZ_Filter::VERSION ); ?>" defer></script>
+</body>
+</html>
         <?php
-        return (string) ob_get_clean();
-    }
-
-    /* ── Assets ──────────────────────────────────── */
-
-    public function enqueue(): void {
-        $page_id = $this->get_page_id();
-        if ( ! $page_id || ! is_page( $page_id ) ) {
-            return;
-        }
-
-        $url = WC_PLZ_FILTER_URL;
-
-        wp_enqueue_style( 'woohoo-product-overview', $url . 'assets/css/product-overview.css', [], WC_PLZ_Filter::VERSION );
-        wp_enqueue_script( 'woohoo-product-overview', $url . 'assets/js/product-overview.js', [], WC_PLZ_Filter::VERSION, [
-            'in_footer' => true,
-            'strategy'  => 'defer',
-        ] );
-
-        wp_localize_script( 'woohoo-product-overview', 'woohooPO', [
-            'restUrl' => rest_url( self::REST_NAMESPACE . '/product-overview' ),
-            'nonce'   => wp_create_nonce( self::NONCE_QUERY ),
-        ] );
-    }
-
-    public function maybe_noindex( array $robots ): array {
-        $page_id = $this->get_page_id();
-        if ( $page_id && is_page( $page_id ) ) {
-            $robots['noindex']  = true;
-            $robots['nofollow'] = true;
-        }
-        return $robots;
     }
 
     /* ── REST endpoint ───────────────────────────── */
