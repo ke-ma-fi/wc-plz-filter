@@ -10,14 +10,15 @@
 #wc-plz-merkliste-btn.wc-plz-merkliste-btn--visible {
   position: relative;
   display: flex !important;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  margin: 0 !important;
   padding: 0 !important;
-  width: 40px;
-  height: 40px;
-  min-width: 0;
-  min-height: 0;
+  width: 40px !important;
+  height: 40px !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
   background: #fff !important;
   background-image: none !important;
   border: 0 !important;
@@ -25,13 +26,19 @@
   border-radius: 999px !important;
   box-shadow: 0 2px 8px rgba(0,0,0,.10), 0 0 0 1px rgba(0,0,0,.06) !important;
   transition: box-shadow .25s ease, transform .2s ease;
-  font-size: 0;
-  line-height: 1;
+  font-size: 0 !important;
+  line-height: 1 !important;
   white-space: nowrap;
+  text-transform: none !important;
   text-shadow: none !important;
   filter: none !important;
-  color: #555;
+  color: #555 !important;
   flex-shrink: 0;
+}
+
+#wc-plz-merkliste-btn.wc-plz-merkliste-btn--visible::before,
+#wc-plz-merkliste-btn.wc-plz-merkliste-btn--visible::after {
+  content: none !important;
 }
 
 #wc-plz-merkliste-btn.wc-plz-merkliste-btn--visible:hover,
@@ -40,12 +47,14 @@
   border: 0 !important;
   border-left: 3px solid var(--wc-plz-color, #c00) !important;
   box-shadow: 0 4px 20px rgba(0,0,0,.15), 0 0 0 1px rgba(0,0,0,.08) !important;
+  color: #555 !important;
   transform: scale(1.06);
 }
 
 #wc-plz-merkliste-btn.wc-plz-merkliste-btn--visible:active {
   border: 0 !important;
   border-left: 3px solid var(--wc-plz-color, #c00) !important;
+  color: #555 !important;
   transform: scale(0.95);
 }
 
@@ -188,25 +197,42 @@ html body button.wc-plz-mk-toggle.wc-plz-mk-toggle--active:hover { opacity: 1; }
   margin: 0;
 }
 
-.wc-plz-merkliste-popover__close {
+html body .wc-plz-merkliste-popover__close {
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
   width: 28px !important;
   height: 28px !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
   padding: 0 !important;
   background: #f5f5f5 !important;
+  background-image: none !important;
   border: 0 !important;
   border-radius: 50% !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  filter: none !important;
+  text-transform: none !important;
   cursor: pointer !important;
   color: #666 !important;
+  font-size: 1rem !important;
   line-height: 1 !important;
   transition: background .15s ease !important;
   flex-shrink: 0;
 }
 
-.wc-plz-merkliste-popover__close:hover {
+html body .wc-plz-merkliste-popover__close::before,
+html body .wc-plz-merkliste-popover__close::after {
+  content: none !important;
+}
+
+html body .wc-plz-merkliste-popover__close:hover,
+html body .wc-plz-merkliste-popover__close:focus,
+html body .wc-plz-merkliste-popover__close:focus-visible {
   background: #e8e8e8 !important;
+  box-shadow: none !important;
   color: #333 !important;
 }
 
@@ -272,36 +298,61 @@ html body button.wc-plz-mk-toggle.wc-plz-mk-toggle--active:hover { opacity: 1; }
   flex-shrink: 0;
 }
 
-.wc-plz-merkliste-item__btn {
+html body .wc-plz-merkliste-item__btn {
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
   width: 30px !important;
   height: 30px !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
   padding: 0 !important;
+  background-image: none !important;
   border: 0 !important;
   border-radius: 8px !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  filter: none !important;
+  text-transform: none !important;
   cursor: pointer !important;
   font-size: .85rem !important;
   line-height: 1 !important;
   transition: background .15s ease, transform .1s ease !important;
 }
 
-.wc-plz-merkliste-item__btn:active { transform: scale(.92) !important; }
+html body .wc-plz-merkliste-item__btn::before,
+html body .wc-plz-merkliste-item__btn::after {
+  content: none !important;
+}
 
-.wc-plz-merkliste-item__btn--goto {
+html body .wc-plz-merkliste-item__btn:active { transform: scale(.92) !important; }
+
+html body .wc-plz-merkliste-item__btn--goto {
   background: #e8f0fe !important;
   color: #1a56db !important;
 }
 
-.wc-plz-merkliste-item__btn--goto:hover { background: #d2e3fc !important; }
+html body .wc-plz-merkliste-item__btn--goto:hover,
+html body .wc-plz-merkliste-item__btn--goto:focus,
+html body .wc-plz-merkliste-item__btn--goto:focus-visible {
+  background: #d2e3fc !important;
+  box-shadow: none !important;
+  color: #1a56db !important;
+}
 
-.wc-plz-merkliste-item__btn--remove {
+html body .wc-plz-merkliste-item__btn--remove {
   background: #fce4e4 !important;
   color: #c62828 !important;
 }
 
-.wc-plz-merkliste-item__btn--remove:hover { background: #ffcdd2 !important; }
+html body .wc-plz-merkliste-item__btn--remove:hover,
+html body .wc-plz-merkliste-item__btn--remove:focus,
+html body .wc-plz-merkliste-item__btn--remove:focus-visible {
+  background: #ffcdd2 !important;
+  box-shadow: none !important;
+  color: #c62828 !important;
+}
 
 /* Fußnote */
 .wc-plz-merkliste-popover__footer {
@@ -317,17 +368,36 @@ html body button.wc-plz-mk-toggle.wc-plz-mk-toggle--active:hover { opacity: 1; }
   margin: 0;
 }
 
-.wc-plz-merkliste-popover__clear {
-  display: block;
-  margin-top: 6px;
-  padding: 0;
+html body .wc-plz-merkliste-popover__clear {
+  display: block !important;
+  width: auto !important;
+  margin: 6px 0 0 !important;
+  padding: 0 !important;
   background: none !important;
+  background-image: none !important;
   border: 0 !important;
-  font-size: .72rem;
-  color: #c62828;
-  cursor: pointer;
-  text-decoration: underline;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  filter: none !important;
+  text-transform: none !important;
+  font-size: .72rem !important;
+  color: #c62828 !important;
+  cursor: pointer !important;
+  text-decoration: underline !important;
   text-underline-offset: 2px;
+}
+
+html body .wc-plz-merkliste-popover__clear::before,
+html body .wc-plz-merkliste-popover__clear::after {
+  content: none !important;
+}
+
+html body .wc-plz-merkliste-popover__clear:hover,
+html body .wc-plz-merkliste-popover__clear:focus,
+html body .wc-plz-merkliste-popover__clear:focus-visible {
+  color: #b71c1c !important;
+  background: none !important;
+  box-shadow: none !important;
 }
 
 /* ─── Responsive ─── */
