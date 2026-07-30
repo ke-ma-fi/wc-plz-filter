@@ -21,11 +21,6 @@ final class WC_PLZ_Merkliste {
         add_action( 'wp_enqueue_scripts', [ $this, 'enqueue' ] );
         add_action( 'wc_plz_widget_group_extra', [ $this, 'render_button' ] );
         add_filter( 'wc_plz_nowprocket_handles', [ $this, 'add_nowprocket_handle' ] );
-        // Toggling this on/off changes what markup/assets get emitted, so a
-        // cached page must be purged or WP Rocket keeps serving the
-        // pre-toggle version. See WC_PLZ_Filter::bust_rocket_cache().
-        add_action( 'add_option_' . self::OPTION, [ 'WC_PLZ_Filter', 'bust_rocket_cache' ] );
-        add_action( 'update_option_' . self::OPTION, [ 'WC_PLZ_Filter', 'bust_rocket_cache' ] );
     }
 
     public function is_enabled(): bool {

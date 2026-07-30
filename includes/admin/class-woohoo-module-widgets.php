@@ -26,6 +26,16 @@ final class Woohoo_Module_Widgets implements Woohoo_Module_Interface {
         }
         ?>
         <p>Beim Deaktivieren der Merkliste bleiben vorhandene Browser-Daten der Kunden unberührt.</p>
+
+        <?php if ( function_exists( 'rocket_clean_domain' ) ) : ?>
+        <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="margin-bottom:16px;">
+            <?php wp_nonce_field( 'wc_plz_bust_rocket_cache' ); ?>
+            <input type="hidden" name="action" value="wc_plz_bust_rocket_cache" />
+            <?php submit_button( 'WP Rocket-Cache leeren', 'secondary', 'submit', false ); ?>
+            <p class="description">Nach dem Umschalten von Merkliste oder Cart-Indicator hier klicken, sonst kann eine zwischengespeicherte Seite noch den alten Zustand zeigen.</p>
+        </form>
+        <?php endif; ?>
+
         <form method="post" action="options.php">
             <?php settings_fields( 'wc_plz_widgets_group' ); ?>
             <table class="form-table">

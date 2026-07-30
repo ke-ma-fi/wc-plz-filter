@@ -31,11 +31,11 @@ final class WC_PLZ_Filter {
     /**
      * Purges WP Rocket's page + minify cache. Called above once per plugin
      * VERSION bump, but that guard never fires for a settings toggle (the
-     * version doesn't change) - so modules whose option flips what markup/
-     * assets get emitted (WC_PLZ_Merkliste, WC_PLZ_Cart_Indicator) call this
-     * directly from their own add_option_ / update_option_ hooks. Without
-     * it, a previously-cached page keeps serving the pre-toggle HTML (no
-     * widget script/markup) until the cache naturally expires.
+     * version doesn't change) - so a stale cached page can keep serving
+     * pre-toggle HTML (e.g. after flipping Merkliste/Cart-Indicator on)
+     * until the cache naturally expires. handle_bust_rocket_cache() below
+     * exposes this as a manual "Cache leeren" button on the Zusatz-Features
+     * tab instead of trying to auto-detect which option changes matter.
      */
     public static function bust_rocket_cache(): void {
         if ( function_exists( 'rocket_clean_minify' ) ) {
@@ -100,6 +100,8 @@ final class WC_PLZ_Filter {
 
         add_action( 'admin_init', [ $this, 'register_settings' ] );
         add_action( 'admin_init', [ $this, 'handle_admin_reset' ] );
+        add_action( 'admin_post_wc_plz_bust_rocket_cache', [ $this, 'handle_bust_rocket_cache' ] );
+        add_action( 'admin_notices', [ $this, 'show_rocket_cache_notice' ] );
 
         add_action( 'woocommerce_after_shipping_zone_object_save', fn() => delete_transient( self::CACHE ) );
         add_action( 'woocommerce_delete_shipping_zone', fn() => delete_transient( self::CACHE ) );
@@ -926,6 +928,30 @@ final class WC_PLZ_Filter {
 
         wp_safe_redirect( add_query_arg( 'wc_plz_reset_done', '1', Woohoo_Admin_Page::tab_url( 'delivery' ) ) );
         exit;
+    }
+
+    /** Manual "Cache leeren" button on the Zusatz-Features tab - see bust_rocket_cache(). */
+    public function handle_bust_rocket_cache(): void {
+        if ( ! current_user_can( self::MANAGE_CAP ) ) {
+            wp_die( 'Insufficient permissions.', 403 );
+        }
+
+        check_admin_referer( 'wc_plz_bust_rocket_cache' );
+        self::bust_rocket_cache();
+
+        wp_safe_redirect( add_query_arg( 'wc_plz_cache_busted', '1', Woohoo_Admin_Page::tab_url( 'widgets' ) ) );
+        exit;
+    }
+
+    public function show_rocket_cache_notice(): void {
+        $screen = get_current_screen();
+        if ( ! $screen || $screen->id !== 'woocommerce_page_woohoo' ) {
+            return;
+        }
+
+        if ( isset( $_GET['wc_plz_cache_busted'] ) ) {
+            echo '<div class="notice notice-success is-dismissible"><p>WP Rocket-Cache geleert.</p></div>';
+        }
     }
 
     public function register_settings(): void {
