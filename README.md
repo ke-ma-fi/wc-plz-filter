@@ -20,6 +20,9 @@ A lightweight WooCommerce plugin for German online shops that presents customers
 - **Persistent state** – choice is stored in a cookie and synced to the WooCommerce customer session; survives page navigation and browser back/forward (bfcache)
 - **PLZ statistics** – anonymous, GDPR-compliant per-event log of which postcodes and modes are selected; filterable by date range; accessible via REST API
 - **Payment reminder** – automatically sends a payment-link email to customers whose orders remain in `pending` status for too long; configurable interval, threshold, subject, body, reply-to address, and dev mode with test-email target
+- **Merkliste (wishlist)** – LocalStorage-based product wishlist with a toggle icon on product tiles and a floating widget button + popover; no account or server sync required
+- **Cart-Indicator** – green outline around a tile's "In den Warenkorb" button when that product (or one of its variations) is already in the cart
+- **Produktübersicht (Packliste)** – native, password-protected page that consolidates open orders' line items by product for warehouse staff, split into "Lokal" (by delivery date) and "Postversand" views
 - **Admin settings page** – configure excluded shipping classes, popup texts, accent colour, badge position, tooltips, and cookie lifetime
 - **Admin PLZ tester** – check any postcode against detected zones right in the dashboard
 - **Developer reset** – one-click cookie and session reset for testing
@@ -93,97 +96,38 @@ Abholung    Enter PLZ      Überspringen   Backdrop/Esc
 
 ## PLZ Statistics
 
-The plugin logs each confirmed mode selection to a dedicated database table (`wp_wc_plz_events`). No personal data is stored – only the postal code (a geographic area), the selected mode, and a timestamp.
+The plugin logs each confirmed mode selection to a dedicated database table. No personal data is stored – only the postal code (a geographic area), the selected mode, and a timestamp. Shop managers and administrators are excluded from tracking to keep data clean.
 
 **GDPR note:** Aggregate geographic statistics without personal identifiers are not subject to the GDPR. No consent is required for this data.
 
-### Admin dashboard
+The **Statistik** tab under **WooCommerce → DT Woohoo** shows an aggregated table with a date-range filter, configurable retention (TTL + max row count, cleaned up daily via WP-Cron), and a reset button. Aggregates are also available remotely via a WooCommerce-API-key-authenticated REST endpoint.
 
-The **Statistik** tab under **WooCommerce → DT Woohoo** shows:
-
-- Aggregated table: PLZ · Zone · Selections · Last seen
-- Date range filter (from / to)
-- Configurable retention: TTL in days (default: 180) and maximum row count (default: 100,000)
-- Daily automatic cleanup via WP-Cron
-- Reset button to clear all statistics
-
-Shop managers and administrators are excluded from tracking to keep data clean.
-
-### REST API
-
-Retrieve aggregated statistics remotely using a WooCommerce API key:
-
-```
-GET /wp-json/wc-plz/v1/stats
-GET /wp-json/wc-plz/v1/stats?from=2026-01-01&to=2026-04-30
-```
-
-**Authentication:** WooCommerce API key (Consumer Key + Consumer Secret via HTTP Basic Auth).  
-Create a key under WooCommerce → Settings → Advanced → REST API (Read permission is sufficient).
-
-```bash
-curl -u ck_xxx:cs_xxx \
-  "https://yourshop.de/wp-json/wc-plz/v1/stats?from=2026-04-01"
-```
-
-**Response:**
-```json
-{
-  "period": { "from": "2026-04-01", "to": "" },
-  "total_events": 65,
-  "data": [
-    { "plz": "63667", "mode": "local",    "count": 42, "last_seen": "2026-04-26T14:23:00" },
-    { "plz": "60313", "mode": "post",     "count": 15, "last_seen": "2026-04-25T09:11:00" },
-    { "plz": "",      "mode": "abholung", "count":  8, "last_seen": "2026-04-26T10:05:00" },
-    { "plz": "",      "mode": "skipped",  "count":  3, "last_seen": "2026-04-25T17:44:00" }
-  ]
-}
-```
+For the data model, caching, retention internals, and full REST API reference (auth, parameters, response shape), see [docs/plz-statistics.md](docs/plz-statistics.md).
 
 ## Payment Reminder
 
-Navigate to **WooCommerce → DT Woohoo → Zahlungs-Erinnerung** to configure the automatic payment reminder.
+Navigate to **WooCommerce → DT Woohoo → Zahlungs-Erinnerung** to configure the automatic payment reminder. When a WooCommerce order stays in `pending` (payment awaited) status longer than a configurable threshold, the plugin sends the customer a reminder email with a direct payment link. Each order receives **at most one reminder**. A dev mode (default: on) redirects all emails to a test address and never marks orders as reminded, so it's safe to test repeatedly before going live; a mail log with per-order resend is also available.
 
-### How it works
+For the full settings reference, placeholder list, dev-mode/cron behaviour, and mail-log details, see [docs/payment-reminder.md](docs/payment-reminder.md).
 
-When a WooCommerce order stays in `pending` (payment awaited) status longer than the configured threshold, the plugin sends the customer a reminder email containing a direct payment link. Each order receives **at most one reminder** (tracked via order meta). In dev mode the email is redirected to a test address and the meta flag is never set, so the same order can be tested repeatedly.
+---
 
-### Settings
+## Zusatz-Features (Merkliste & Cart-Indicator)
 
-| Setting | Description |
-|---------|-------------|
-| Dev mode | When active: no automatic cron, all emails sent to test address only (default: on) |
-| Test email address | Recipient for all emails while dev mode is active (default: WordPress admin email) |
-| Reply-To address | `Reply-To` header set on every outgoing reminder email; leave empty to omit the header (default: WordPress admin email) |
-| Cron interval (minutes) | How often the cron job scans for pending orders (default: 5) |
-| Pending threshold (minutes) | Orders older than this value trigger a reminder (default: 5) |
-| Email subject | Customisable subject line; supports placeholders |
-| Email body | Customisable body text; supports placeholders |
+Navigate to **WooCommerce → DT Woohoo → Zusatz-Features** to toggle these on/off. Both are enabled by default, store no server-side state, and are independent of each other.
 
-### Placeholders
+| Feature | Behaviour |
+|---------|-----------|
+| **Merkliste** | Adds a notepad icon to product tiles and a floating widget button (with item count) that opens a popover listing saved products. The list is kept in the browser's LocalStorage only – no account binding, no server sync, distinct from any "My favourites" account feature. Disabling it leaves customers' existing browser data untouched. |
+| **Cart-Indicator** | Draws a green outline around a tile's add-to-cart button when that product is already in the cart. Reads the WooCommerce Store API cart client-side; a variation counts as "in cart" for its parent product's tile, and multiple variations of the same product still show a single outline (no quantity shown). |
 
-The following placeholders are available in subject and body:
+For LocalStorage schema, caching, live-update strategy, and theme/plugin compatibility details, see [docs/widgets.md](docs/widgets.md).
 
-| Placeholder | Replaced with |
-|-------------|---------------|
-| `{order_number}` | WooCommerce order number |
-| `{order_date}` | Order date (WordPress date format) |
-| `{customer_first_name}` | Billing first name |
-| `{customer_last_name}` | Billing last name |
-| `{customer_full_name}` | Billing first + last name |
-| `{order_total}` | Order total incl. currency |
-| `{payment_url}` | Direct payment link |
-| `{shop_name}` | Shop name |
+## Produktübersicht (Packliste)
 
-Order number and date are always appended to the email footer, even if the placeholders are removed from the body.
+Navigate to **WooCommerce → DT Woohoo → Zusatz-Features** to enable the **Produktübersicht** page and set its access password. This replaces the former "DT konsolidierte Produktliste" n8n workflows with a native, password-protected, self-hosted page that consolidates open orders' line items by product into a packing list for warehouse staff — split into a **Lokal** view (by delivery date) and a **Postversand** view.
 
-### Dev mode & manual test run
-
-While dev mode is active, a **"Jetzt testen"** button is shown in the admin panel. It runs the exact same scan as the regular cron job but sends all emails to the configured test address and never sets the reminder meta flag on orders.
-
-### Mail log
-
-The last 50 sent reminders are shown in a log table under the settings. Each entry includes timestamp, recipient, order ID, mode (dev/live), and status. A **"Erneut senden"** button allows resending for any logged order, bypassing the one-reminder-per-order limit.
+For the full access model, page provisioning behaviour, and REST API reference (endpoint, request/response shape, auth model for integrating from other apps), see [docs/product-overview.md](docs/product-overview.md).
 
 ---
 
