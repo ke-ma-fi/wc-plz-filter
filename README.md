@@ -2,7 +2,7 @@
 
 A lightweight WooCommerce plugin for German online shops that presents customers with a **postal-code (PLZ) popup** on their first visit and lets them pick a delivery mode. Based on their choice, the shop dynamically filters products and pre-fills the checkout.
 
-> Internally the plugin folder, classes, options, capability, AJAX actions, and REST namespace still use the legacy `wc-plz-filter` / `WC_PLZ_*` naming — only the plugin's display name and admin UI are branded "DT Woohoo". See [NAMING.md](NAMING.md) for why, and what a full rename would require.
+> Internally the plugin folder, classes, options, capability, AJAX actions, and REST namespace still use the legacy `wc-plz-filter` / `WC_PLZ_*` naming — only the plugin's display name and admin UI are branded "DT Woohoo". See [docs/NAMING.md](docs/NAMING.md) for why, and what a full rename would require.
 
 ---
 

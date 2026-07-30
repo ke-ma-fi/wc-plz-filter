@@ -340,6 +340,18 @@ final class Woohoo_Product_Overview {
 
         nocache_headers();
 
+        // nocache_headers() only sets HTTP cache-control headers, which
+        // WP Rocket's full-page disk cache ignores entirely - it caches
+        // based on its own request inspection, not response headers, and
+        // by default doesn't recognize this plugin's custom auth cookie as
+        // a reason to skip caching. Without this, whichever response
+        // (locked-out form or the authenticated tool) gets served first to
+        // an anonymous request would be cached and served to every visitor
+        // after that, regardless of their own auth state.
+        if ( ! defined( 'DONOTCACHEPAGE' ) ) {
+            define( 'DONOTCACHEPAGE', true );
+        }
+
         if ( ! $this->is_enabled() ) {
             global $wp_query;
             $wp_query->set_404();

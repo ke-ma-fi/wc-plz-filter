@@ -22,7 +22,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-// Naming convention: see NAMING.md. Internal identifiers (constants, option
+// Naming convention: see docs/NAMING.md. Internal identifiers (constants, option
 // keys, capability, AJAX actions, REST namespace, this file/folder name) stay
 // on the legacy WC_PLZ_* / wc_plz_* scheme on purpose — only the plugin's
 // display name and admin UI are branded as "DT Woohoo".
