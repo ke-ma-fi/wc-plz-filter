@@ -25,7 +25,17 @@ final class Woohoo_Product_Overview {
 
     const COOKIE        = 'woohoo_po_auth';
     const NONCE_UNLOCK  = 'woohoo_po_unlock';
-    const NONCE_QUERY   = 'woohoo_po_query';
+
+    /**
+     * MUST be 'wp_rest', not a custom action: WordPress's core REST
+     * cookie-auth layer (rest_cookie_collect_status()) reads the X-WP-Nonce
+     * header and verifies it against the 'wp_rest' action specifically,
+     * *before* our own permission_callback ever runs. Any other action name
+     * here makes WordPress reject the whole request for logged-in users
+     * with "Cookie check failed" (rest_cookie_invalid_nonce), regardless of
+     * what our own nonce check would have decided.
+     */
+    const NONCE_QUERY   = 'wp_rest';
     const REST_NAMESPACE = 'woohoo/v1';
 
     const FAIL_TRANSIENT_PREFIX = 'woohoo_po_fails_';
@@ -89,12 +99,20 @@ final class Woohoo_Product_Overview {
      * has no option_page_capability_* filter yet, which means options.php
      * would otherwise require manage_options (administrators only) to save
      * it, even though the tab itself is only gated by the plugin's own
-     * MANAGE_CAP. Registering the filter here (idempotent, last writer wins)
-     * makes the whole tab - including these new fields - actually savable by
-     * anyone with MANAGE_CAP, per instruction.
+     * MANAGE_CAP.
+     *
+     * Deliberately OR'd rather than hard-set to MANAGE_CAP: forcing it to
+     * MANAGE_CAP unconditionally would silently break saving for *any*
+     * account that (for whatever reason - e.g. the activation hook that
+     * grants MANAGE_CAP never re-ran) doesn't actually hold that capability,
+     * even a full administrator. Checking manage_options first preserves the
+     * pre-existing behavior for admins and only relaxes it for MANAGE_CAP
+     * holders that lack manage_options (shop_manager), per instruction.
      */
     public function register_settings(): void {
-        add_filter( 'option_page_capability_wc_plz_widgets_group', fn() => WC_PLZ_Filter::MANAGE_CAP );
+        add_filter( 'option_page_capability_wc_plz_widgets_group', function () {
+            return current_user_can( 'manage_options' ) ? 'manage_options' : WC_PLZ_Filter::MANAGE_CAP;
+        } );
 
         register_setting( 'wc_plz_widgets_group', self::OPTION_ENABLED, [
             'type'              => 'boolean',
@@ -109,8 +127,16 @@ final class Woohoo_Product_Overview {
         ] );
     }
 
+    /** error_log(), gated to WP_DEBUG so this stays silent on production unless someone opted in. */
+    private static function debug_log( string $message ): void {
+        if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+            error_log( '[Woohoo Product Overview] ' . $message );
+        }
+    }
+
     public function sanitize_settings( $input ): array {
         $this->settings_cache = null;
+        $raw_input_keys = is_array( $input ) ? implode( ',', array_keys( $input ) ) : gettype( $input );
         $input   = is_array( $input ) ? $input : [];
         $current = wp_parse_args( get_option( self::OPTION_SETTINGS, [] ), self::defaults() );
 
@@ -128,11 +154,22 @@ final class Woohoo_Product_Overview {
             $password_hash = wp_hash_password( $raw_password );
         }
 
-        return [
+        $result = [
             'path'          => $path,
             'password_hash' => $password_hash,
             'session_days'  => max( 1, min( 90, (int) ( $input['session_days'] ?? 7 ) ) ),
         ];
+
+        self::debug_log( sprintf(
+            'sanitize_settings: received keys=[%s], password submitted=%s, resulting path=%s, has_password=%s, session_days=%d',
+            $raw_input_keys,
+            $raw_password !== '' ? 'yes' : 'no',
+            $result['path'],
+            $result['password_hash'] !== '' ? 'yes' : 'no',
+            $result['session_days']
+        ) );
+
+        return $result;
     }
 
     /**
@@ -151,6 +188,9 @@ final class Woohoo_Product_Overview {
         if ( ! $enabled ) {
             if ( $page && $page->post_type === 'page' && $page->post_status !== 'trash' && $page->post_status !== 'draft' ) {
                 wp_update_post( [ 'ID' => $page_id, 'post_status' => 'draft' ] );
+                self::debug_log( "sync_page: disabled, set page {$page_id} to draft" );
+            } else {
+                self::debug_log( 'sync_page: disabled, nothing to do (page_id=' . $page_id . ')' );
             }
             return;
         }
@@ -166,8 +206,11 @@ final class Woohoo_Product_Overview {
                 'ping_status'    => 'closed',
             ], true );
 
-            if ( ! is_wp_error( $new_id ) ) {
+            if ( is_wp_error( $new_id ) ) {
+                self::debug_log( 'sync_page: wp_insert_post FAILED: ' . $new_id->get_error_message() );
+            } else {
                 update_option( self::OPTION_PAGE_ID, $new_id, false );
+                self::debug_log( "sync_page: created page {$new_id} at path '{$settings['path']}'" );
             }
             return;
         }
@@ -180,8 +223,37 @@ final class Woohoo_Product_Overview {
             $update['post_name'] = $settings['path'];
         }
         if ( count( $update ) > 1 ) {
-            wp_update_post( $update );
+            $result = wp_update_post( $update, true );
+            if ( is_wp_error( $result ) ) {
+                self::debug_log( "sync_page: wp_update_post FAILED for page {$page_id}: " . $result->get_error_message() );
+            } else {
+                self::debug_log( "sync_page: updated page {$page_id} (" . wp_json_encode( $update ) . ')' );
+            }
+        } else {
+            self::debug_log( "sync_page: page {$page_id} already in sync (status={$page->post_status}, slug={$page->post_name})" );
         }
+    }
+
+    /**
+     * Snapshot of the persisted state, for the admin status panel
+     * (Woohoo_Module_Widgets) - lets an admin verify what actually got
+     * saved without needing DB/log access.
+     */
+    public function get_debug_status(): array {
+        $settings = $this->get_settings();
+        $page_id  = $this->get_page_id();
+        $page     = $page_id ? get_post( $page_id ) : null;
+
+        return [
+            'enabled'       => $this->is_enabled(),
+            'path'          => $settings['path'],
+            'url'           => home_url( '/' . $settings['path'] . '/' ),
+            'has_password'  => $settings['password_hash'] !== '',
+            'session_days'  => (int) $settings['session_days'],
+            'page_id'       => $page_id,
+            'page_status'   => $page ? $page->post_status : null,
+            'page_slug'     => $page ? $page->post_name : null,
+        ];
     }
 
     private function get_page_id(): int {
@@ -454,14 +526,22 @@ body{font-family:Arial,sans-serif;background:#f5f5f5;display:flex;min-height:100
             explode( ',', $exclude_raw )
         ) ) );
 
-        if ( $mode === 'local' ) {
-            $date = (string) $request->get_param( 'date' );
-            if ( ! preg_match( '/^\d{4}-\d{2}-\d{2}$/', $date ) ) {
-                return new \WP_Error( 'woohoo_po_bad_date', 'Bitte ein gültiges Datum angeben.', [ 'status' => 400 ] );
+        try {
+            if ( $mode === 'local' ) {
+                $date = (string) $request->get_param( 'date' );
+                if ( ! preg_match( '/^\d{4}-\d{2}-\d{2}$/', $date ) ) {
+                    return new \WP_Error( 'woohoo_po_bad_date', 'Bitte ein gültiges Datum angeben.', [ 'status' => 400 ] );
+                }
+                $result = Woohoo_PO_Aggregator::get_local_summary( $date, $exclude );
+            } else {
+                $result = Woohoo_PO_Aggregator::get_post_summary( $exclude );
             }
-            $result = Woohoo_PO_Aggregator::get_local_summary( $date, $exclude );
-        } else {
-            $result = Woohoo_PO_Aggregator::get_post_summary( $exclude );
+        } catch ( \Throwable $e ) {
+            // Surfaced as a real REST error message (and, with WP_DEBUG on,
+            // logged) instead of an opaque 500 - so a failure here is
+            // actually diagnosable from the browser network tab alone.
+            self::debug_log( 'rest_handle: ' . get_class( $e ) . ': ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine() );
+            return new \WP_Error( 'woohoo_po_query_failed', 'Fehler beim Abrufen der Übersicht: ' . $e->getMessage(), [ 'status' => 500 ] );
         }
 
         $response = new \WP_REST_Response( $result );

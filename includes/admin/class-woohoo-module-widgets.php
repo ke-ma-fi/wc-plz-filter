@@ -62,6 +62,63 @@ final class Woohoo_Module_Widgets implements Woohoo_Module_Interface {
 
             <?php submit_button( 'Speichern' ); ?>
         </form>
+
+        <?php $this->render_product_overview_status(); ?>
+        <?php
+    }
+
+    /**
+     * Reads back what's actually persisted right now (independent of the
+     * form above, which never re-displays the password) so it's possible to
+     * confirm a save actually took effect without digging into the database
+     * or debug.log.
+     */
+    private function render_product_overview_status(): void {
+        $status = Woohoo_Product_Overview::instance()->get_debug_status();
+        ?>
+        <h3>Produktübersicht – aktueller Status</h3>
+        <table class="widefat striped" style="max-width:640px;">
+            <tbody>
+                <tr>
+                    <td><strong>Aktiviert</strong></td>
+                    <td><?php echo $status['enabled'] ? 'Ja' : 'Nein'; ?></td>
+                </tr>
+                <tr>
+                    <td><strong>Passwort gesetzt</strong></td>
+                    <td>
+                        <?php if ( $status['has_password'] ) : ?>
+                            <span style="color:#00a32a;font-weight:600;">Ja</span>
+                        <?php else : ?>
+                            <span style="color:#d63638;font-weight:600;">Nein</span>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+                <tr>
+                    <td><strong>Pfad / URL</strong></td>
+                    <td><code><?php echo esc_html( $status['url'] ); ?></code></td>
+                </tr>
+                <tr>
+                    <td><strong>Sitzungsdauer</strong></td>
+                    <td><?php echo (int) $status['session_days']; ?> Tage</td>
+                </tr>
+                <tr>
+                    <td><strong>Seite</strong></td>
+                    <td>
+                        <?php if ( $status['page_id'] ) : ?>
+                            ID <?php echo (int) $status['page_id']; ?>,
+                            Status: <code><?php echo esc_html( (string) $status['page_status'] ); ?></code>,
+                            Slug: <code><?php echo esc_html( (string) $status['page_slug'] ); ?></code>
+                            <?php if ( $status['page_status'] === null ) : ?>
+                                <span style="color:#d63638;">(Seite existiert nicht mehr – bitte einmal speichern, um sie neu anzulegen)</span>
+                            <?php endif; ?>
+                        <?php else : ?>
+                            <span style="color:#646970;">Noch nicht angelegt (wird beim nächsten Speichern mit aktivierter Checkbox erstellt).</span>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+        <p class="description">Bei aktivem <code>WP_DEBUG</code> werden Speichervorgänge zusätzlich mit dem Präfix <code>[Woohoo Product Overview]</code> ins Debug-Log geschrieben.</p>
         <?php
     }
 

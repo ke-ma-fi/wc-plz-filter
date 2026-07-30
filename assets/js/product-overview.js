@@ -133,17 +133,24 @@
                 credentials: 'same-origin',
             })
                 .then(function (response) {
-                    if (!response.ok) {
-                        throw new Error('request-failed');
-                    }
-                    return response.json();
+                    // Read the body regardless of status - WP_Error REST
+                    // responses (400/401/403/500) still carry a useful
+                    // { message: "..." } JSON payload we want to show
+                    // instead of a generic failure string.
+                    return response.json().then(function (data) {
+                        if (!response.ok) {
+                            var err = new Error(data && data.message ? data.message : 'HTTP ' + response.status);
+                            throw err;
+                        }
+                        return data;
+                    });
                 })
                 .then(function (data) {
                     setStatus('', false);
                     renderGroups(results, data.groups);
                 })
-                .catch(function () {
-                    setStatus('Fehler beim Laden. Bitte erneut versuchen.', true);
+                .catch(function (err) {
+                    setStatus((err && err.message) || 'Fehler beim Laden. Bitte erneut versuchen.', true);
                 })
                 .finally(function () {
                     submitBtn.disabled = false;
