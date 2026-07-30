@@ -92,8 +92,27 @@ final class Woohoo_Product_Overview {
         return $this->get_password_hash() !== '';
     }
 
-    /** Its own settings group + form on the Zusatz-Features tab (same pattern as WC_PLZ_Reminder::register_settings()), not sharing wc_plz_widgets_group with Merkliste/Cart-Indicator - keeps its capability filter and array-option sanitize callback isolated from the simpler boolean toggles living there. */
+    /**
+     * Its own settings group + form on the Zusatz-Features tab (same
+     * pattern as WC_PLZ_Reminder::register_settings()), not sharing
+     * wc_plz_widgets_group with Merkliste/Cart-Indicator - keeps its
+     * capability filter and array-option sanitize callback isolated from
+     * the simpler boolean toggles living there.
+     */
     const SETTINGS_GROUP = 'woohoo_product_overview_group';
+
+    /**
+     * Guards against register_setting() (and therefore add_filter() on
+     * sanitize_option_{option}) running more than once in a request. If
+     * register_settings() ever fires twice on 'admin_init' - for whatever
+     * reason - WordPress's apply_filters() chains BOTH registrations of the
+     * same sanitize_callback on the same hook: the second invocation
+     * receives the first invocation's *return value* as its input, which
+     * broke the password field specifically (the second pass would see a
+     * 'password_hash' key - its own prior output - instead of the raw
+     * 'password' field, and conclude no password was submitted).
+     */
+    private static bool $settings_registered = false;
 
     /**
      * The shop_manager role has MANAGE_CAP but not manage_options by
@@ -109,23 +128,8 @@ final class Woohoo_Product_Overview {
      * pre-existing behavior for admins and only relaxes it for MANAGE_CAP
      * holders that lack manage_options (shop_manager), per instruction.
      */
-    /**
-     * Guards against register_setting() (and therefore add_filter() on
-     * sanitize_option_{option}) running more than once in a request. If
-     * register_settings() ever fires twice on 'admin_init' - for whatever
-     * reason - WordPress's apply_filters() chains BOTH registrations of the
-     * same sanitize_callback on the same hook: the second invocation
-     * receives the first invocation's *return value* as its input. For
-     * sanitize_settings() that's fatal to the password field specifically,
-     * since the second pass sees a 'password_hash' key (its own prior
-     * output) instead of the raw 'password' field and treats the password
-     * as not submitted, silently keeping it empty.
-     */
-    private static bool $settings_registered = false;
-
     public function register_settings(): void {
         if ( self::$settings_registered ) {
-            self::debug_log( 'register_settings: skipped, already registered this request' );
             return;
         }
         self::$settings_registered = true;
@@ -147,35 +151,10 @@ final class Woohoo_Product_Overview {
         ] );
     }
 
-    /** error_log(), gated to WP_DEBUG so this stays silent on production unless someone opted in. */
-    private static function debug_log( string $message ): void {
-        if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-            error_log( '[Woohoo Product Overview] ' . $message );
-        }
-    }
-
-    const DEBUG_TRANSIENT = 'woohoo_po_last_save_debug';
-
-    /**
-     * Records what this save attempt actually saw, into a transient (not
-     * just the error_log) so it's visible in the admin UI right after the
-     * options.php redirect even without log access - see
-     * Woohoo_Module_Widgets::render_product_overview_status(). One-shot:
-     * the status panel deletes it after displaying.
-     */
-    private static function record_save_debug( array $data ): void {
-        $data['time'] = current_time( 'mysql' );
-        set_transient( self::DEBUG_TRANSIENT, $data, 5 * MINUTE_IN_SECONDS );
-        self::debug_log( 'sanitize_settings: ' . wp_json_encode( $data ) );
-    }
-
-    private static int $sanitize_call_count = 0;
-
     public function sanitize_settings( $input ): array {
         $this->settings_cache = null;
-        ++self::$sanitize_call_count;
 
-        // Defense-in-depth idempotency guard (see the docblock on
+        // Idempotency guard (see the docblock on
         // register_settings()/$settings_registered): if this ever still
         // gets chained a second time despite that guard, $input at that
         // point is THIS function's own prior output - recognizable by
@@ -183,11 +162,6 @@ final class Woohoo_Product_Overview {
         // already-sanitized and pass it through rather than mistaking the
         // hash for "no password submitted".
         if ( is_array( $input ) && array_key_exists( 'password_hash', $input ) && ! array_key_exists( 'password', $input ) ) {
-            self::record_save_debug( [
-                'note'         => 'idempotency guard triggered - input was already-sanitized output',
-                'call_number'  => self::$sanitize_call_count,
-                'input_keys'   => implode( ',', array_keys( $input ) ),
-            ] );
             return [
                 'path'          => (string) ( $input['path'] ?? self::DEFAULT_PATH ),
                 'password_hash' => (string) ( $input['password_hash'] ?? '' ),
@@ -195,11 +169,6 @@ final class Woohoo_Product_Overview {
             ];
         }
 
-        $post_had_option_key = isset( $_POST[ self::OPTION_SETTINGS ] );
-        $post_had_password_key = is_array( $_POST[ self::OPTION_SETTINGS ] ?? null )
-            && array_key_exists( 'password', $_POST[ self::OPTION_SETTINGS ] );
-
-        $raw_input_keys = is_array( $input ) ? implode( ',', array_keys( $input ) ) : gettype( $input );
         $input   = is_array( $input ) ? $input : [];
         $current = wp_parse_args( get_option( self::OPTION_SETTINGS, [] ), self::defaults() );
 
@@ -217,30 +186,11 @@ final class Woohoo_Product_Overview {
             $password_hash = wp_hash_password( $raw_password );
         }
 
-        $result = [
+        return [
             'path'          => $path,
             'password_hash' => $password_hash,
             'session_days'  => max( 1, min( 90, (int) ( $input['session_days'] ?? 7 ) ) ),
         ];
-
-        self::record_save_debug( [
-            'call_number'            => self::$sanitize_call_count,
-            // Raw superglobal, checked directly - independent of whatever
-            // sanitize_option()/register_setting() did to $input before
-            // handing it to us, so this can catch a WAF/security plugin
-            // stripping the field before we ever see it (some strip POST
-            // keys/values that look like a password field by name).
-            'post_had_option_key'    => $post_had_option_key ? 'yes' : 'no',
-            'post_had_password_key'  => $post_had_password_key ? 'yes' : 'no',
-            'sanitize_input_keys'    => $raw_input_keys,
-            'password_len_submitted' => strlen( $raw_password ),
-            'had_password_before'    => $current['password_hash'] !== '' ? 'yes' : 'no',
-            'has_password_after'     => $result['password_hash'] !== '' ? 'yes' : 'no',
-            'resulting_path'         => $result['path'],
-            'resulting_session_days' => $result['session_days'],
-        ] );
-
-        return $result;
     }
 
     /**
@@ -259,9 +209,6 @@ final class Woohoo_Product_Overview {
         if ( ! $enabled ) {
             if ( $page && $page->post_type === 'page' && $page->post_status !== 'trash' && $page->post_status !== 'draft' ) {
                 wp_update_post( [ 'ID' => $page_id, 'post_status' => 'draft' ] );
-                self::debug_log( "sync_page: disabled, set page {$page_id} to draft" );
-            } else {
-                self::debug_log( 'sync_page: disabled, nothing to do (page_id=' . $page_id . ')' );
             }
             return;
         }
@@ -277,11 +224,8 @@ final class Woohoo_Product_Overview {
                 'ping_status'    => 'closed',
             ], true );
 
-            if ( is_wp_error( $new_id ) ) {
-                self::debug_log( 'sync_page: wp_insert_post FAILED: ' . $new_id->get_error_message() );
-            } else {
+            if ( ! is_wp_error( $new_id ) ) {
                 update_option( self::OPTION_PAGE_ID, $new_id, false );
-                self::debug_log( "sync_page: created page {$new_id} at path '{$settings['path']}'" );
             }
             return;
         }
@@ -294,23 +238,16 @@ final class Woohoo_Product_Overview {
             $update['post_name'] = $settings['path'];
         }
         if ( count( $update ) > 1 ) {
-            $result = wp_update_post( $update, true );
-            if ( is_wp_error( $result ) ) {
-                self::debug_log( "sync_page: wp_update_post FAILED for page {$page_id}: " . $result->get_error_message() );
-            } else {
-                self::debug_log( "sync_page: updated page {$page_id} (" . wp_json_encode( $update ) . ')' );
-            }
-        } else {
-            self::debug_log( "sync_page: page {$page_id} already in sync (status={$page->post_status}, slug={$page->post_name})" );
+            wp_update_post( $update );
         }
     }
 
     /**
      * Snapshot of the persisted state, for the admin status panel
-     * (Woohoo_Module_Widgets) - lets an admin verify what actually got
-     * saved without needing DB/log access.
+     * (Woohoo_Module_Widgets) - lets an admin verify what's actually
+     * configured without needing DB access.
      */
-    public function get_debug_status(): array {
+    public function get_status_summary(): array {
         $settings = $this->get_settings();
         $page_id  = $this->get_page_id();
         $page     = $page_id ? get_post( $page_id ) : null;
@@ -329,20 +266,6 @@ final class Woohoo_Product_Overview {
 
     private function get_page_id(): int {
         return (int) get_option( self::OPTION_PAGE_ID, 0 );
-    }
-
-    /**
-     * One-shot read of the last save-attempt diagnostic recorded by
-     * sanitize_settings() (see record_save_debug()). Consumes the transient
-     * so it only shows up once, right after the redirect from options.php.
-     */
-    public function consume_last_save_debug(): ?array {
-        $data = get_transient( self::DEBUG_TRANSIENT );
-        if ( $data === false ) {
-            return null;
-        }
-        delete_transient( self::DEBUG_TRANSIENT );
-        return $data;
     }
 
     /* ── Auth cookie (stateless, self-verifying) ────────────────────
@@ -622,10 +545,9 @@ body{font-family:Arial,sans-serif;background:#f5f5f5;display:flex;min-height:100
                 $result = Woohoo_PO_Aggregator::get_post_summary( $exclude );
             }
         } catch ( \Throwable $e ) {
-            // Surfaced as a real REST error message (and, with WP_DEBUG on,
-            // logged) instead of an opaque 500 - so a failure here is
-            // actually diagnosable from the browser network tab alone.
-            self::debug_log( 'rest_handle: ' . get_class( $e ) . ': ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine() );
+            // Surfaced as a real REST error message instead of an opaque
+            // 500 - so a failure here is diagnosable from the browser
+            // network tab alone.
             return new \WP_Error( 'woohoo_po_query_failed', 'Fehler beim Abrufen der Übersicht: ' . $e->getMessage(), [ 'status' => 500 ] );
         }
 

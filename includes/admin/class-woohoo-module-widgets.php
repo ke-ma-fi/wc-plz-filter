@@ -75,35 +75,11 @@ final class Woohoo_Module_Widgets implements Woohoo_Module_Interface {
     /**
      * Reads back what's actually persisted right now (independent of the
      * form above, which never re-displays the password) so it's possible to
-     * confirm a save actually took effect without digging into the database
-     * or debug.log.
+     * confirm a save actually took effect without digging into the database.
      */
     private function render_product_overview_status(): void {
-        $instance   = Woohoo_Product_Overview::instance();
-        $status     = $instance->get_debug_status();
-        $save_debug = $instance->consume_last_save_debug();
+        $status = Woohoo_Product_Overview::instance()->get_status_summary();
         ?>
-        <?php if ( $save_debug !== null ) : ?>
-            <div class="notice notice-info" style="padding:10px 14px;max-width:640px;">
-                <p style="margin-top:0;"><strong>Letzter Speicherversuch</strong> (<?php echo esc_html( $save_debug['time'] ?? '' ); ?>):</p>
-                <table class="widefat" style="margin-bottom:8px;">
-                    <tbody>
-                        <?php if ( isset( $save_debug['note'] ) ) : ?>
-                            <tr><td colspan="2" style="color:#d63638;"><strong>Hinweis:</strong> <?php echo esc_html( $save_debug['note'] ); ?> (Aufruf Nr. <?php echo (int) ( $save_debug['call_number'] ?? 0 ); ?>)</td></tr>
-                        <?php endif; ?>
-                        <tr><td>sanitize_settings()-Aufrufe in dieser Anfrage</td><td><strong><?php echo (int) ( $save_debug['call_number'] ?? 0 ); ?></strong></td></tr>
-                        <tr><td>Formularfeld <code>woohoo_product_overview_settings</code> im POST vorhanden</td><td><strong><?php echo esc_html( $save_debug['post_had_option_key'] ?? '?' ); ?></strong></td></tr>
-                        <tr><td>Darin ein <code>password</code>-Schlüssel vorhanden</td><td><strong><?php echo esc_html( $save_debug['post_had_password_key'] ?? '?' ); ?></strong></td></tr>
-                        <tr><td>An sanitize_settings() übergebene Schlüssel</td><td><code><?php echo esc_html( $save_debug['sanitize_input_keys'] ?? '' ); ?></code></td></tr>
-                        <tr><td>Länge des übermittelten Passworts</td><td><?php echo (int) ( $save_debug['password_len_submitted'] ?? 0 ); ?> Zeichen</td></tr>
-                        <tr><td>Passwort vor diesem Speichervorgang gesetzt</td><td><?php echo esc_html( $save_debug['had_password_before'] ?? '?' ); ?></td></tr>
-                        <tr><td>Passwort nach diesem Speichervorgang gesetzt</td><td><strong><?php echo esc_html( $save_debug['has_password_after'] ?? '?' ); ?></strong></td></tr>
-                        <tr><td>Gespeicherter Pfad</td><td><code><?php echo esc_html( $save_debug['resulting_path'] ?? '' ); ?></code></td></tr>
-                    </tbody>
-                </table>
-                <p class="description">Diese Box erscheint einmalig nach jedem Speichern und zeigt genau, was auf dem Server ankam.</p>
-            </div>
-        <?php endif; ?>
         <h3>Produktübersicht – aktueller Status</h3>
         <table class="widefat striped" style="max-width:640px;">
             <tbody>
@@ -146,7 +122,6 @@ final class Woohoo_Module_Widgets implements Woohoo_Module_Interface {
                 </tr>
             </tbody>
         </table>
-        <p class="description">Bei aktivem <code>WP_DEBUG</code> werden Speichervorgänge zusätzlich mit dem Präfix <code>[Woohoo Product Overview]</code> ins Debug-Log geschrieben.</p>
         <?php
     }
 
