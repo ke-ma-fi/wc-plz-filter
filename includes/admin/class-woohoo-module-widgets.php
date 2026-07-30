@@ -88,6 +88,10 @@ final class Woohoo_Module_Widgets implements Woohoo_Module_Interface {
                 <p style="margin-top:0;"><strong>Letzter Speicherversuch</strong> (<?php echo esc_html( $save_debug['time'] ?? '' ); ?>):</p>
                 <table class="widefat" style="margin-bottom:8px;">
                     <tbody>
+                        <?php if ( isset( $save_debug['note'] ) ) : ?>
+                            <tr><td colspan="2" style="color:#d63638;"><strong>Hinweis:</strong> <?php echo esc_html( $save_debug['note'] ); ?> (Aufruf Nr. <?php echo (int) ( $save_debug['call_number'] ?? 0 ); ?>)</td></tr>
+                        <?php endif; ?>
+                        <tr><td>sanitize_settings()-Aufrufe in dieser Anfrage</td><td><strong><?php echo (int) ( $save_debug['call_number'] ?? 0 ); ?></strong></td></tr>
                         <tr><td>Formularfeld <code>woohoo_product_overview_settings</code> im POST vorhanden</td><td><strong><?php echo esc_html( $save_debug['post_had_option_key'] ?? '?' ); ?></strong></td></tr>
                         <tr><td>Darin ein <code>password</code>-Schlüssel vorhanden</td><td><strong><?php echo esc_html( $save_debug['post_had_password_key'] ?? '?' ); ?></strong></td></tr>
                         <tr><td>An sanitize_settings() übergebene Schlüssel</td><td><code><?php echo esc_html( $save_debug['sanitize_input_keys'] ?? '' ); ?></code></td></tr>

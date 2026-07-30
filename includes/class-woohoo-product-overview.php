@@ -109,7 +109,27 @@ final class Woohoo_Product_Overview {
      * pre-existing behavior for admins and only relaxes it for MANAGE_CAP
      * holders that lack manage_options (shop_manager), per instruction.
      */
+    /**
+     * Guards against register_setting() (and therefore add_filter() on
+     * sanitize_option_{option}) running more than once in a request. If
+     * register_settings() ever fires twice on 'admin_init' - for whatever
+     * reason - WordPress's apply_filters() chains BOTH registrations of the
+     * same sanitize_callback on the same hook: the second invocation
+     * receives the first invocation's *return value* as its input. For
+     * sanitize_settings() that's fatal to the password field specifically,
+     * since the second pass sees a 'password_hash' key (its own prior
+     * output) instead of the raw 'password' field and treats the password
+     * as not submitted, silently keeping it empty.
+     */
+    private static bool $settings_registered = false;
+
     public function register_settings(): void {
+        if ( self::$settings_registered ) {
+            self::debug_log( 'register_settings: skipped, already registered this request' );
+            return;
+        }
+        self::$settings_registered = true;
+
         add_filter( 'option_page_capability_' . self::SETTINGS_GROUP, function () {
             return current_user_can( 'manage_options' ) ? 'manage_options' : WC_PLZ_Filter::MANAGE_CAP;
         } );
@@ -149,8 +169,31 @@ final class Woohoo_Product_Overview {
         self::debug_log( 'sanitize_settings: ' . wp_json_encode( $data ) );
     }
 
+    private static int $sanitize_call_count = 0;
+
     public function sanitize_settings( $input ): array {
         $this->settings_cache = null;
+        ++self::$sanitize_call_count;
+
+        // Defense-in-depth idempotency guard (see the docblock on
+        // register_settings()/$settings_registered): if this ever still
+        // gets chained a second time despite that guard, $input at that
+        // point is THIS function's own prior output - recognizable by
+        // having 'password_hash' but no raw 'password' key. Treat it as
+        // already-sanitized and pass it through rather than mistaking the
+        // hash for "no password submitted".
+        if ( is_array( $input ) && array_key_exists( 'password_hash', $input ) && ! array_key_exists( 'password', $input ) ) {
+            self::record_save_debug( [
+                'note'         => 'idempotency guard triggered - input was already-sanitized output',
+                'call_number'  => self::$sanitize_call_count,
+                'input_keys'   => implode( ',', array_keys( $input ) ),
+            ] );
+            return [
+                'path'          => (string) ( $input['path'] ?? self::DEFAULT_PATH ),
+                'password_hash' => (string) ( $input['password_hash'] ?? '' ),
+                'session_days'  => max( 1, min( 90, (int) ( $input['session_days'] ?? 7 ) ) ),
+            ];
+        }
 
         $post_had_option_key = isset( $_POST[ self::OPTION_SETTINGS ] );
         $post_had_password_key = is_array( $_POST[ self::OPTION_SETTINGS ] ?? null )
@@ -181,6 +224,7 @@ final class Woohoo_Product_Overview {
         ];
 
         self::record_save_debug( [
+            'call_number'            => self::$sanitize_call_count,
             // Raw superglobal, checked directly - independent of whatever
             // sanitize_option()/register_setting() did to $input before
             // handing it to us, so this can catch a WAF/security plugin
