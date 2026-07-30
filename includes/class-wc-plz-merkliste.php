@@ -27,7 +27,21 @@ final class WC_PLZ_Merkliste {
         return (int) get_option( self::OPTION, 1 ) === 1;
     }
 
+    /**
+     * shop_manager holds MANAGE_CAP but not manage_options, so this group
+     * needs its own option_page_capability_* filter or options.php falls
+     * back to requiring manage_options (administrators only) to save it -
+     * even though the tab itself is already gated by MANAGE_CAP. OR'd rather
+     * than hard-set to MANAGE_CAP so admins lacking MANAGE_CAP (e.g. a stale
+     * activation hook) aren't locked out either. Cart-Indicator adds the
+     * same filter on the same hook; harmless since both just resolve to the
+     * same value regardless of call count.
+     */
     public function register_setting(): void {
+        add_filter( 'option_page_capability_wc_plz_widgets_group', function () {
+            return current_user_can( 'manage_options' ) ? 'manage_options' : WC_PLZ_Filter::MANAGE_CAP;
+        } );
+
         register_setting( 'wc_plz_widgets_group', self::OPTION, [
             'type'              => 'boolean',
             'sanitize_callback' => fn( $value ) => ! empty( $value ) ? 1 : 0,

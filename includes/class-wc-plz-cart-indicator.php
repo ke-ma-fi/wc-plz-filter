@@ -67,7 +67,15 @@ final class WC_PLZ_Cart_Indicator {
         return (int) get_option( self::OPTION, 1 ) === 1;
     }
 
+    /**
+     * See WC_PLZ_Merkliste::register_setting() - same shared group, same
+     * reason the capability filter is needed here.
+     */
     public function register_setting(): void {
+        add_filter( 'option_page_capability_wc_plz_widgets_group', function () {
+            return current_user_can( 'manage_options' ) ? 'manage_options' : WC_PLZ_Filter::MANAGE_CAP;
+        } );
+
         register_setting( 'wc_plz_widgets_group', self::OPTION, [
             'type'              => 'boolean',
             'sanitize_callback' => fn( $value ) => ! empty( $value ) ? 1 : 0,
