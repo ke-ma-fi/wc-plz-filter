@@ -26,6 +26,8 @@ delete_option( 'wc_plz_hidden_version' );
 delete_option( 'wc_plz_updater_repo' );
 delete_option( 'wc_plz_updater_secret' );
 delete_option( 'wc_plz_updater_log' );
+delete_option( 'wc_plz_merkliste_enabled' );
+delete_option( 'wc_plz_cart_indicator_enabled' );
 
 // 3. Delete transients.
 delete_transient( 'wc_plz_local_codes' );
