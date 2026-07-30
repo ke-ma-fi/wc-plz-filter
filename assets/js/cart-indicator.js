@@ -35,6 +35,12 @@
       tile.querySelector("a.button, button.button");
   }
 
+  // productId -> retries left. Populated by applyOptimisticIndicator() below,
+  // cleared by applyIndicators() once the fetched cart actually confirms (or
+  // gives up on) that id.
+  var pendingOptimistic = {};
+  var OPTIMISTIC_RETRY_DELAYS = [1000, 2000]; // ms, tried in order
+
   function applyIndicators(inCartIds) {
     var allTiles = getAllTiles();
     allTiles.forEach(function (tile) {
@@ -42,7 +48,31 @@
       if (!id) return;
       var btn = getCartButton(tile);
       if (!btn) return;
-      btn.classList.toggle("wc-plz-in-cart", inCartIds.indexOf(id) !== -1);
+
+      if (inCartIds.indexOf(id) !== -1) {
+        delete pendingOptimistic[id];
+        btn.classList.add("wc-plz-in-cart");
+        return;
+      }
+
+      // Not in the fetched cart, but we just optimistically marked it on
+      // click (see applyOptimisticIndicator) - this fetch most likely raced
+      // the server-side session write (see cart-indicator.js history: first
+      // add-to-cart of a session creates a new session row, which persists
+      // slower than a later update to an existing one). Retry a couple of
+      // times, keeping the optimistic indicator up, before trusting "not in
+      // cart" and clearing it - covers a failed add (stock issue etc.) too.
+      if (pendingOptimistic.hasOwnProperty(id)) {
+        var attempt = pendingOptimistic[id];
+        if (attempt < OPTIMISTIC_RETRY_DELAYS.length) {
+          pendingOptimistic[id] = attempt + 1;
+          setTimeout(fetchCart, OPTIMISTIC_RETRY_DELAYS[attempt]);
+          return;
+        }
+        delete pendingOptimistic[id];
+      }
+
+      btn.classList.remove("wc-plz-in-cart");
     });
   }
 
@@ -54,14 +84,17 @@
   // waiting on a network round trip - the Store API fetch below, or (worse)
   // the fixed setTimeout guess used for the fgf grid, which on a slow
   // request can fire before the server has actually persisted the cart (see
-  // the click handler further down). fetchCart()'s subsequent
-  // applyIndicators() call fully re-derives every tile's state from the real
-  // cart shortly after, so a failed add (out of stock, etc.) self-corrects.
+  // the click handler further down). Marks the id as pending so
+  // applyIndicators() above retries instead of immediately clearing it if
+  // the very next fetch still doesn't see it.
   function applyOptimisticIndicator(clickedEl) {
     var tile = closestTile(clickedEl);
     if (!tile) return;
     var btn = getCartButton(tile);
-    if (btn) btn.classList.add("wc-plz-in-cart");
+    if (!btn) return;
+    btn.classList.add("wc-plz-in-cart");
+    var id = getProductIdFromEl(tile);
+    if (id) pendingOptimistic[id] = 0;
   }
 
   /* ── WC Store API: Cart abrufen ─────────────── */
