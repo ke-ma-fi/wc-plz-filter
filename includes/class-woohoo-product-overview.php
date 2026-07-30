@@ -92,14 +92,14 @@ final class Woohoo_Product_Overview {
         return $this->get_password_hash() !== '';
     }
 
+    /** Its own settings group + form on the Zusatz-Features tab (same pattern as WC_PLZ_Reminder::register_settings()), not sharing wc_plz_widgets_group with Merkliste/Cart-Indicator - keeps its capability filter and array-option sanitize callback isolated from the simpler boolean toggles living there. */
+    const SETTINGS_GROUP = 'woohoo_product_overview_group';
+
     /**
-     * Registered on the same shared 'wc_plz_widgets_group' the Zusatz-Features
-     * tab already uses for Merkliste/Cart-Indicator (one form, one Speichern
-     * button) - see includes/admin/class-woohoo-module-widgets.php. That group
-     * has no option_page_capability_* filter yet, which means options.php
-     * would otherwise require manage_options (administrators only) to save
-     * it, even though the tab itself is only gated by the plugin's own
-     * MANAGE_CAP.
+     * The shop_manager role has MANAGE_CAP but not manage_options by
+     * default, so this group needs its own option_page_capability_* filter
+     * or options.php would require manage_options (administrators only) to
+     * save it - even though the tab itself is already gated by MANAGE_CAP.
      *
      * Deliberately OR'd rather than hard-set to MANAGE_CAP: forcing it to
      * MANAGE_CAP unconditionally would silently break saving for *any*
@@ -110,17 +110,17 @@ final class Woohoo_Product_Overview {
      * holders that lack manage_options (shop_manager), per instruction.
      */
     public function register_settings(): void {
-        add_filter( 'option_page_capability_wc_plz_widgets_group', function () {
+        add_filter( 'option_page_capability_' . self::SETTINGS_GROUP, function () {
             return current_user_can( 'manage_options' ) ? 'manage_options' : WC_PLZ_Filter::MANAGE_CAP;
         } );
 
-        register_setting( 'wc_plz_widgets_group', self::OPTION_ENABLED, [
+        register_setting( self::SETTINGS_GROUP, self::OPTION_ENABLED, [
             'type'              => 'boolean',
             'sanitize_callback' => fn( $value ) => ! empty( $value ) ? 1 : 0,
             'default'           => 0,
         ] );
 
-        register_setting( 'wc_plz_widgets_group', self::OPTION_SETTINGS, [
+        register_setting( self::SETTINGS_GROUP, self::OPTION_SETTINGS, [
             'type'              => 'array',
             'sanitize_callback' => [ $this, 'sanitize_settings' ],
             'default'           => self::defaults(),

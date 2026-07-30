@@ -55,11 +55,16 @@ final class Woohoo_Module_Widgets implements Woohoo_Module_Interface {
                     </td>
                 </tr>
             </table>
+            <?php submit_button( 'Speichern' ); ?>
+        </form>
 
-            <h2 class="title">Produktübersicht</h2>
-            <p>Konsolidierte, nach Produkt gruppierte Packliste offener Bestellungen (Lokal/Postversand) auf einer eigenen, passwortgeschützten Shop-Seite.</p>
+        <hr />
+
+        <h2 class="title">Produktübersicht</h2>
+        <p>Konsolidierte, nach Produkt gruppierte Packliste offener Bestellungen (Lokal/Postversand) auf einer eigenen, passwortgeschützten Shop-Seite.</p>
+        <form method="post" action="options.php">
+            <?php settings_fields( Woohoo_Product_Overview::SETTINGS_GROUP ); ?>
             <?php $this->render_product_overview_fields(); ?>
-
             <?php submit_button( 'Speichern' ); ?>
         </form>
 

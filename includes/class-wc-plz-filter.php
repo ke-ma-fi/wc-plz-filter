@@ -5,7 +5,7 @@ final class WC_PLZ_Filter {
 
     use WC_PLZ_Singleton;
 
-    const VERSION         = '2.11.1';
+    const VERSION         = '2.11.2';
     const COOKIE          = 'wc_delivery_mode';
     const OPT             = 'wc_plz_filter_v2';
     const CACHE           = 'wc_plz_local_codes';
