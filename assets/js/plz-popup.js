@@ -134,9 +134,16 @@
 
   function fadeIn(el, duration) {
     if (!el) return;
-    var wasHidden = el.style.display === "none";
-    el.style.removeProperty("display");
+    // Computed style, not just the inline one: an element can be hidden by
+    // a stylesheet rule rather than (or in addition to) an inline
+    // display:none, and removeProperty() alone would silently no-op then,
+    // leaving the element hidden with no further sign anything went wrong.
+    var wasHidden = window.getComputedStyle(el).display === "none";
     if (!wasHidden) return;
+    el.style.removeProperty("display");
+    if (window.getComputedStyle(el).display === "none") {
+      el.style.display = "flex";
+    }
     el.style.opacity = "0";
     el.style.transition = "opacity " + (duration || 200) + "ms ease";
     // Force reflow before transition

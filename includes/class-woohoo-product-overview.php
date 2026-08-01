@@ -100,13 +100,19 @@ final class Woohoo_Product_Overview {
     /**
      * Guards against register_setting() (and therefore add_filter() on
      * sanitize_option_{option}) running more than once in a request. If
-     * register_settings() ever fires twice on 'admin_init' - for whatever
-     * reason - WordPress's apply_filters() chains BOTH registrations of the
-     * same sanitize_callback on the same hook: the second invocation
-     * receives the first invocation's *return value* as its input, which
-     * broke the password field specifically (the second pass would see a
-     * 'password_hash' key - its own prior output - instead of the raw
-     * 'password' field, and conclude no password was submitted).
+     * register_settings() ever fired twice on 'admin_init', WordPress's
+     * apply_filters() would chain BOTH registrations of the same
+     * sanitize_callback on the same hook - the second invocation would
+     * receive the first invocation's *return value* as its input, breaking
+     * the password field specifically (it would see a 'password_hash' key -
+     * its own prior output - instead of the raw 'password' field, and
+     * conclude no password was submitted).
+     *
+     * This is the ONLY guard against that: sanitize_settings() deliberately
+     * does not try to detect/tolerate a re-entrant call by inspecting
+     * $input's shape (e.g. "has password_hash but no password") - that
+     * would also let a client submit password_hash directly and have it
+     * stored verbatim, bypassing wp_hash_password() entirely.
      */
     private static bool $settings_registered = false;
 
@@ -149,20 +155,6 @@ final class Woohoo_Product_Overview {
 
     public function sanitize_settings( $input ): array {
         $this->settings_cache = null;
-
-        // Idempotency guard (see the docblock on
-        // register_settings()/$settings_registered): if this ever still
-        // gets chained a second time despite that guard, $input at that
-        // point is THIS function's own prior output - recognizable by
-        // having 'password_hash' but no raw 'password' key. Treat it as
-        // already-sanitized and pass it through rather than mistaking the
-        // hash for "no password submitted".
-        if ( is_array( $input ) && array_key_exists( 'password_hash', $input ) && ! array_key_exists( 'password', $input ) ) {
-            return [
-                'password_hash' => (string) ( $input['password_hash'] ?? '' ),
-                'session_days'  => max( 1, min( 90, (int) ( $input['session_days'] ?? 7 ) ) ),
-            ];
-        }
 
         $input   = is_array( $input ) ? $input : [];
         $current = wp_parse_args( get_option( self::OPTION_SETTINGS, [] ), self::defaults() );
@@ -240,9 +232,15 @@ final class Woohoo_Product_Overview {
         $page_id  = $this->get_page_id();
         $page     = $page_id ? get_post( $page_id ) : null;
 
+        // get_permalink() rather than a hard-coded path: wp_insert_post()
+        // runs post_name through wp_unique_post_slug(), so if the default
+        // slug was already taken by another post, the provisioned page's
+        // real URL carries a "-2" suffix that the hard-coded guess would miss.
+        $url = $page ? get_permalink( $page ) : home_url( '/' . self::DEFAULT_PATH . '/' );
+
         return [
             'enabled'       => $this->is_enabled(),
-            'url'           => home_url( '/' . self::DEFAULT_PATH . '/' ),
+            'url'           => $url,
             'has_password'  => $settings['password_hash'] !== '',
             'session_days'  => (int) $settings['session_days'],
             'page_id'       => $page_id,
@@ -537,10 +535,12 @@ body{font-family:Arial,sans-serif;background:#f5f5f5;display:flex;min-height:100
                 $result = Woohoo_PO_Aggregator::get_post_summary( $exclude );
             }
         } catch ( \Throwable $e ) {
-            // Surfaced as a real REST error message instead of an opaque
-            // 500 - so a failure here is diagnosable from the browser
-            // network tab alone.
-            return new \WP_Error( 'woohoo_po_query_failed', 'Fehler beim Abrufen der Übersicht: ' . $e->getMessage(), [ 'status' => 500 ] );
+            // Logged server-side (may contain internal detail - query
+            // fragments, file paths); the client only ever sees a generic
+            // message, since this endpoint's audience includes staff without
+            // a WP account, not just admins.
+            error_log( 'Woohoo Produktübersicht query failed: ' . $e->getMessage() );
+            return new \WP_Error( 'woohoo_po_query_failed', 'Fehler beim Abrufen der Übersicht. Bitte später erneut versuchen.', [ 'status' => 500 ] );
         }
 
         $response = new \WP_REST_Response( $result );

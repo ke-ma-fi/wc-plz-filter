@@ -1,6 +1,6 @@
 # Zusatz-Features: Merkliste & Cart-Indicator
 
-Two independent, client-side-only product tile widgets. Both are self-contained (own option, own enqueue, own markup) and never referenced directly by the core `WC_PLZ_Filter` class — they hook into it only through the `wc_plz_widget_group_extra` action and `wc_plz_nowprocket_handles` filter, so the core never needs to know either exists.
+Two independent, client-side-only product tile widgets. Both are self-contained (own option, own enqueue, own markup); `WC_PLZ_Filter::init()` bootstraps them (`require_once` + `instance()`), but beyond that one wiring point they integrate purely through the `wc_plz_widget_group_extra` action and `wc_plz_nowprocket_handles` filter, so the core's own logic never needs to know either exists.
 
 Toggle both under **WooCommerce → DT Woohoo → Zusatz-Features**. Enabled by default; disabling either leaves customers' existing browser data untouched.
 

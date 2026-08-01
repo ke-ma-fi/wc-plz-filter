@@ -852,8 +852,12 @@ final class WC_PLZ_Filter {
             $group_classes .= ' wc-plz-widget-group--rotated';
         }
 
-        // Build inline style for offsets (on the group, not the badge)
-        $group_style = '';
+        // Build inline style for offsets (on the group, not the badge).
+        // display:none by default - same role the badge's own inline style
+        // used to play before it moved onto this wrapper - so the group
+        // (and whatever's in its unpopulated initial markup) never paints
+        // before plz-popup.js's updateBadge()/fadeIn() has actually run.
+        $group_style = 'display:none;';
         if ( $offset_x !== 0 ) {
             $group_style .= '--wc-plz-offset-x:' . $offset_x . 'px;';
         }

@@ -6,9 +6,10 @@ defined( 'ABSPATH' ) || exit;
  * icon on product tiles, and a floating widget button + popover.
  *
  * Self-contained: owns its own option, its own enqueue, and its own tab
- * markup. It talks to WC_PLZ_Filter only through the wc_plz_widget_group_extra
- * action and wc_plz_nowprocket_handles filter, so the core class never needs
- * to know Merkliste exists.
+ * markup. WC_PLZ_Filter::init() bootstraps it (require_once + instance()),
+ * but beyond that one wiring point it integrates purely through the
+ * wc_plz_widget_group_extra action and wc_plz_nowprocket_handles filter, so
+ * the core class's own logic never needs to know Merkliste exists.
  */
 final class WC_PLZ_Merkliste {
 

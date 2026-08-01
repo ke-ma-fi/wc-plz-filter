@@ -153,7 +153,10 @@ final class Woohoo_Module_Widgets implements Woohoo_Module_Interface {
                     </label>
                     <p class="description">
                         Erreichbar unter:
-                        <code><?php echo esc_html( home_url( '/' . Woohoo_Product_Overview::DEFAULT_PATH . '/' ) ); ?></code>
+                        <?php // get_status_summary()['url'] rather than a hard-coded path - see its
+                        // own docblock: the auto-provisioned page's slug can carry a "-2" suffix
+                        // if the default path was already taken. ?>
+                        <code><?php echo esc_html( Woohoo_Product_Overview::instance()->get_status_summary()['url'] ); ?></code>
                     </p>
                     <?php if ( ! $has_password ) : ?>
                         <p class="description" style="color:#d63638;">Bitte unten ein Passwort vergeben, sonst bleibt die Seite für alle ohne Woohoo-Berechtigung unzugänglich.</p>

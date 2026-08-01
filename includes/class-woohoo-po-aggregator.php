@@ -125,8 +125,15 @@ final class Woohoo_PO_Aggregator {
     private static function aggregate_item( array &$groups, \WC_Order_Item_Product $item, string $customer_name, string $shipping_method ): void {
         $product_id = $item->get_product_id();
         $parent     = $product_id ? wc_get_product( $product_id ) : null;
-        $key        = $parent ? $parent->get_name() : $item->get_name();
+        $name       = $parent ? $parent->get_name() : $item->get_name();
         $sku        = $parent ? $parent->get_sku() : '';
+
+        // Keyed by product ID rather than display name: two distinct products
+        // can share the same name, and a renamed product would otherwise
+        // split its own history across two group rows. Falls back to a
+        // name-based key only when there's no product ID (e.g. the product
+        // was since deleted and get_product_id() has nothing to point at).
+        $key = $product_id ? 'id:' . $product_id : 'name:' . $name;
 
         $weight_str = self::get_meta( $item, [ 'pa_gewicht', 'Gewicht' ] );
         $weight     = self::parse_weight( $weight_str );
@@ -137,7 +144,7 @@ final class Woohoo_PO_Aggregator {
 
         if ( ! isset( $groups[ $key ] ) ) {
             $groups[ $key ] = [
-                'name'   => $key,
+                'name'   => $name,
                 'sku'    => $sku,
                 'total'  => 0.0,
                 'unit'   => $weight ? $weight['unit'] : 'Stück',

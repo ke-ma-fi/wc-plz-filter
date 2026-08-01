@@ -352,7 +352,12 @@ html body #wc-plz-overlay button.wc-plz-btn--ghost:hover {
 #wc-plz-widget-group {
   position: fixed;
   z-index: 99999;
-  display: flex !important;
+  /* No !important: hidden-by-default is an inline style set server-side
+     (see WC_PLZ_Filter::render_popup()) and revealed by fadeIn() once JS has
+     determined the actual badge state. An !important flex here would beat
+     that inline display:none and show the group - with whatever's in its
+     unpopulated initial markup - before JS ever runs. */
+  display: flex;
   align-items: center;
   gap: 8px;
   --wc-plz-offset-x: 0px;

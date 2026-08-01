@@ -7,7 +7,9 @@ defined( 'ABSPATH' ) || exit;
  * no server state.
  *
  * Self-contained: owns its own option and its own enqueue/page-scoping.
- * WC_PLZ_Filter never references this class directly.
+ * WC_PLZ_Filter::init() bootstraps it (require_once + instance()), but
+ * beyond that one wiring point the core class's own logic never references
+ * it directly - integration happens purely through hooks/filters.
  */
 final class WC_PLZ_Cart_Indicator {
 
