@@ -151,7 +151,12 @@ html body button.wc-plz-mk-toggle.wc-plz-mk-toggle--active:hover { opacity: 1; }
 
 #wc-plz-merkliste-popover {
   position: fixed;
-  z-index: 100000;
+  /* Max 32-bit z-index, same precedent as .wc-plz-badge__tooltip in
+     plz-popup.css - third-party overlay widgets (cookie-consent banners
+     like CCM19, etc.) commonly ship their own very high z-index too, so
+     this only reliably wins by tying at the ceiling and relying on DOM
+     order, not by picking an arbitrarily "big enough" number. */
+  z-index: 2147483647;
   bottom: 80px;
   right: 24px;
   width: 320px;

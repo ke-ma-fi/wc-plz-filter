@@ -108,11 +108,11 @@ final class Woohoo_Product_Overview {
      * its own prior output - instead of the raw 'password' field, and
      * conclude no password was submitted).
      *
-     * This is the ONLY guard against that: sanitize_settings() deliberately
-     * does not try to detect/tolerate a re-entrant call by inspecting
-     * $input's shape (e.g. "has password_hash but no password") - that
-     * would also let a client submit password_hash directly and have it
-     * stored verbatim, bypassing wp_hash_password() entirely.
+     * Not relied on as the only guard, though: if this ever still fires
+     * twice despite it (observed in practice - cause unconfirmed, possibly
+     * a persistent/worker-mode PHP runtime not resetting statics between
+     * requests), sanitize_settings() also recognizes its own re-entrant
+     * input shape as a fallback - see the guard there.
      */
     private static bool $settings_registered = false;
 
@@ -155,6 +155,24 @@ final class Woohoo_Product_Overview {
 
     public function sanitize_settings( $input ): array {
         $this->settings_cache = null;
+
+        // Re-entrancy fallback (see the docblock on register_settings()'s
+        // $settings_registered guard): if this still gets chained a second
+        // time, $input at that point is THIS function's own prior output -
+        // recognizable by having 'password_hash' but no raw 'password' key.
+        // Pass it through as already-sanitized rather than mistaking the
+        // hash for "no password submitted" and silently discarding a
+        // genuinely-typed new password. Deliberately keyed off presence of
+        // 'password_hash' + absence of 'password' (not just "no password
+        // key") so a client can never submit 'password_hash' directly on a
+        // normal request and have it stored verbatim, bypassing
+        // wp_hash_password() entirely.
+        if ( is_array( $input ) && array_key_exists( 'password_hash', $input ) && ! array_key_exists( 'password', $input ) ) {
+            return [
+                'password_hash' => (string) ( $input['password_hash'] ?? '' ),
+                'session_days'  => max( 1, min( 90, (int) ( $input['session_days'] ?? 7 ) ) ),
+            ];
+        }
 
         $input   = is_array( $input ) ? $input : [];
         $current = wp_parse_args( get_option( self::OPTION_SETTINGS, [] ), self::defaults() );
