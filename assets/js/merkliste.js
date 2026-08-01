@@ -12,6 +12,26 @@
   var CACHE_KEY   = "plz_mk_pcache";
   var CACHE_TTL   = 600000; // 10 minutes
   var storeApiBase = (M.storeApiUrl || "/wp-json/wc/store/v1").replace(/\/$/, "");
+  var statsUrl = M.statsUrl || "";
+
+  /* ── Usage counters (fire-and-forget, best-effort) ──────────── */
+
+  function pingStat(event) {
+    if (!statsUrl) return;
+    var body = "event=" + encodeURIComponent(event);
+    try {
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon(statsUrl, new Blob([body], { type: "application/x-www-form-urlencoded" }));
+        return;
+      }
+    } catch (e) {}
+    try {
+      var xhr = new XMLHttpRequest();
+      xhr.open("POST", statsUrl, true);
+      xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+      xhr.send(body);
+    } catch (e) {}
+  }
 
   /* ── LocalStorage helpers ───────────────────── */
 
@@ -151,6 +171,7 @@
       setMerkliste([]);
       applyTileIcons();
       updateWidget();
+      pingStat("remove");
       var listEl = popover.querySelector("#wc-plz-merkliste-list");
       if (listEl) listEl.innerHTML = '<p class="wc-plz-merkliste-popover__empty">Keine Produkte auf der Merkliste.</p>';
     });
@@ -163,6 +184,7 @@
     var p = getOrCreatePopover();
     p.style.display = "flex";
     popoverOpen = true;
+    pingStat("popover_open");
     positionPopover(p);
     renderPopoverList(p);
     var closeBtn = p.querySelector(".wc-plz-merkliste-popover__close");
@@ -386,9 +408,11 @@
       e.preventDefault();
       e.stopPropagation();
       var id = parseInt(toggleBtn.dataset.productId, 10);
-      if (isInMerkliste(id)) { removeProduct(id); } else { addProduct(id); }
+      var wasInMerkliste = isInMerkliste(id);
+      if (wasInMerkliste) { removeProduct(id); } else { addProduct(id); }
       applyTileIcons();
       updateWidget();
+      pingStat(wasInMerkliste ? "remove" : "add");
       if (popoverOpen && popover) renderPopoverList(popover);
       return;
     }
@@ -410,6 +434,7 @@
       if (item) item.remove();
       applyTileIcons();
       updateWidget();
+      pingStat("remove");
       if (popover) {
         var listEl = popover.querySelector("#wc-plz-merkliste-list");
         if (listEl && !listEl.querySelector(".wc-plz-merkliste-item")) {
@@ -454,6 +479,7 @@
   function init() {
     applyTileIcons();
     updateWidget();
+    pingStat("init");
 
     // Warm up cache if merkliste is not empty
     var ids = getMerkliste();

@@ -27,6 +27,7 @@ delete_option( 'wc_plz_updater_repo' );
 delete_option( 'wc_plz_updater_secret' );
 delete_option( 'wc_plz_updater_log' );
 delete_option( 'wc_plz_merkliste_enabled' );
+delete_option( 'wc_plz_merkliste_stats' );
 delete_option( 'wc_plz_cart_indicator_enabled' );
 
 // 3. Delete transients.

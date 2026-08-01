@@ -17,11 +17,26 @@ final class WC_PLZ_Merkliste {
 
     const OPTION = 'wc_plz_merkliste_enabled';
 
+    /**
+     * Rough usage counters, "for reference" only - not a full events table
+     * like WC_PLZ_Stats (no per-day history, no per-product breakdown, just
+     * running totals). Deliberately a single small option rather than that
+     * table's dbDelta/cron-cleanup machinery: Merkliste itself never talks
+     * to the server otherwise (LocalStorage-only, see the class docblock),
+     * so this is the smallest addition that still answers "is anyone using
+     * this". No size cap on the option needed - the key set is fixed
+     * (STATS_EVENTS) and only the counter values grow.
+     */
+    const STATS_OPTION = 'wc_plz_merkliste_stats';
+    const STATS_EVENTS  = [ 'init', 'add', 'remove', 'popover_open' ];
+
     private function __construct() {
         add_action( 'admin_init', [ $this, 'register_setting' ] );
+        add_action( 'admin_init', [ $this, 'handle_stats_reset' ] );
         add_action( 'wp_enqueue_scripts', [ $this, 'enqueue' ] );
         add_action( 'wc_plz_widget_group_extra', [ $this, 'render_button' ] );
         add_filter( 'wc_plz_nowprocket_handles', [ $this, 'add_nowprocket_handle' ] );
+        add_action( 'rest_api_init', [ $this, 'register_stats_route' ] );
     }
 
     public function is_enabled(): bool {
@@ -64,6 +79,7 @@ final class WC_PLZ_Merkliste {
         ] );
         wp_localize_script( 'wc-plz-merkliste', 'wcPlzMerkliste', [
             'storeApiUrl' => rest_url( 'wc/store/v1' ),
+            'statsUrl'    => rest_url( 'wc-plz/v1/merkliste-stats' ),
         ] );
     }
 
@@ -92,5 +108,114 @@ final class WC_PLZ_Merkliste {
     public function add_nowprocket_handle( array $handles ): array {
         $handles[] = 'wc-plz-merkliste';
         return $handles;
+    }
+
+    /* ── Nutzungs-Statistik (Zähler) ─────────────── */
+
+    public function register_stats_route(): void {
+        register_rest_route( 'wc-plz/v1', '/merkliste-stats', [
+            'methods'             => WP_REST_Server::CREATABLE,
+            // Public and un-throttled on purpose: these are rough reference
+            // counters, not sensitive data, and merkliste.js runs for
+            // anonymous visitors who have no nonce to send.
+            'permission_callback' => '__return_true',
+            'callback'            => [ $this, 'rest_bump_stat' ],
+            'args'                => [
+                'event' => [
+                    'type'              => 'string',
+                    'required'          => true,
+                    'sanitize_callback' => 'sanitize_key',
+                    'validate_callback' => fn( $value ) => in_array( $value, self::STATS_EVENTS, true ),
+                ],
+            ],
+        ] );
+    }
+
+    public function rest_bump_stat( WP_REST_Request $request ): WP_REST_Response {
+        $this->bump_stat( (string) $request->get_param( 'event' ) );
+        return new WP_REST_Response( null, 204 );
+    }
+
+    /**
+     * Skips staff the same way WC_PLZ_Stats::log_event() does - browsing
+     * the front-end while logged into wp-admin shouldn't inflate what's
+     * meant to be a read on real visitor usage.
+     */
+    private function bump_stat( string $event ): void {
+        if ( ! in_array( $event, self::STATS_EVENTS, true ) ) {
+            return;
+        }
+        if ( is_user_logged_in() && current_user_can( WC_PLZ_Filter::MANAGE_CAP ) ) {
+            return;
+        }
+
+        $stats           = get_option( self::STATS_OPTION, [] );
+        $stats[ $event ] = (int) ( $stats[ $event ] ?? 0 ) + 1;
+        update_option( self::STATS_OPTION, $stats, false );
+    }
+
+    /** @return array<string,int> All STATS_EVENTS keys, zero-filled if never counted. */
+    public function get_stats(): array {
+        $stats = get_option( self::STATS_OPTION, [] );
+        return array_merge(
+            array_fill_keys( self::STATS_EVENTS, 0 ),
+            array_intersect_key( $stats, array_flip( self::STATS_EVENTS ) )
+        );
+    }
+
+    public function handle_stats_reset(): void {
+        if ( ! isset( $_POST['wc_plz_merkliste_stats_reset'] ) ) {
+            return;
+        }
+        if ( ! current_user_can( WC_PLZ_Filter::MANAGE_CAP ) ) {
+            return;
+        }
+        check_admin_referer( 'wc_plz_merkliste_stats_reset' );
+
+        delete_option( self::STATS_OPTION );
+
+        wp_safe_redirect( add_query_arg( 'wc_plz_merkliste_stats_reset_done', '1', Woohoo_Admin_Page::tab_url( 'stats' ) ) );
+        exit;
+    }
+
+    /**
+     * Rendered by Woohoo_Module_Stats::render_tab() above the PLZ-Statistik
+     * section - Merkliste stays the source of truth for its own numbers
+     * (own option, own reset handler) the same way it owns its enqueue and
+     * settings, WC_PLZ_Stats just hosts the tab both appear on.
+     */
+    public function render_stats_block(): void {
+        $stats      = $this->get_stats();
+        $reset_done = isset( $_GET['wc_plz_merkliste_stats_reset_done'] );
+        $labels     = [
+            'init'         => 'Seitenaufrufe mit aktiver Merkliste',
+            'add'          => 'Produkte hinzugefügt',
+            'remove'       => 'Produkte entfernt',
+            'popover_open' => 'Popover geöffnet',
+        ];
+        ?>
+        <h2>Merkliste-Nutzung</h2>
+        <?php if ( $reset_done ) : ?>
+            <div class="notice notice-success is-dismissible"><p>Merkliste-Zähler wurden zurückgesetzt.</p></div>
+        <?php endif; ?>
+        <table class="wp-list-table widefat fixed striped" style="max-width:500px;margin-top:8px;">
+            <tbody>
+                <?php foreach ( $labels as $key => $label ) : ?>
+                    <tr>
+                        <td><?php echo esc_html( $label ); ?></td>
+                        <td><strong><?php echo number_format_i18n( $stats[ $key ] ); ?></strong></td>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+        <p style="margin-top:10px;">
+            <form method="post" action="" style="display:inline;" onsubmit="return confirm('Merkliste-Zähler unwiderruflich zurücksetzen?');">
+                <?php wp_nonce_field( 'wc_plz_merkliste_stats_reset' ); ?>
+                <input type="hidden" name="wc_plz_merkliste_stats_reset" value="1" />
+                <?php submit_button( 'Zähler zurücksetzen', 'delete', 'submit', false ); ?>
+            </form>
+        </p>
+        <hr style="margin:24px 0;" />
+        <?php
     }
 }

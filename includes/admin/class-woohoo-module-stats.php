@@ -22,6 +22,7 @@ final class Woohoo_Module_Stats implements Woohoo_Module_Interface {
     }
 
     public function render_tab(): void {
+        WC_PLZ_Merkliste::instance()->render_stats_block();
         $this->stats->render_admin_section();
     }
 }
