@@ -5,7 +5,7 @@ final class WC_PLZ_Filter {
 
     use WC_PLZ_Singleton;
 
-    const VERSION         = '2.9.0';
+    const VERSION         = '2.12.5';
     const COOKIE          = 'wc_delivery_mode';
     const OPT             = 'wc_plz_filter_v2';
     const CACHE           = 'wc_plz_local_codes';
@@ -25,6 +25,19 @@ final class WC_PLZ_Filter {
             return;
         }
         update_option( 'wc_plz_rocket_busted', self::VERSION, false );
+        self::bust_rocket_cache();
+    }
+
+    /**
+     * Purges WP Rocket's page + minify cache. Called above once per plugin
+     * VERSION bump, but that guard never fires for a settings toggle (the
+     * version doesn't change) - so a stale cached page can keep serving
+     * pre-toggle HTML (e.g. after flipping Merkliste/Cart-Indicator on)
+     * until the cache naturally expires. handle_bust_rocket_cache() below
+     * exposes this as a manual "Cache leeren" button on the Zusatz-Features
+     * tab instead of trying to auto-detect which option changes matter.
+     */
+    public static function bust_rocket_cache(): void {
         if ( function_exists( 'rocket_clean_minify' ) ) {
             rocket_clean_minify();
         }
@@ -56,6 +69,16 @@ final class WC_PLZ_Filter {
         require_once WC_PLZ_FILTER_DIR . 'includes/class-wc-plz-reminder.php';
         $reminder = WC_PLZ_Reminder::instance();
 
+        require_once WC_PLZ_FILTER_DIR . 'includes/class-wc-plz-merkliste.php';
+        WC_PLZ_Merkliste::instance();
+
+        require_once WC_PLZ_FILTER_DIR . 'includes/class-wc-plz-cart-indicator.php';
+        WC_PLZ_Cart_Indicator::instance();
+
+        require_once WC_PLZ_FILTER_DIR . 'includes/class-woohoo-po-aggregator.php';
+        require_once WC_PLZ_FILTER_DIR . 'includes/class-woohoo-product-overview.php';
+        Woohoo_Product_Overview::instance();
+
         if ( is_admin() && ! wp_doing_ajax() ) {
             require_once WC_PLZ_FILTER_DIR . 'includes/admin/interface-woohoo-module.php';
             require_once WC_PLZ_FILTER_DIR . 'includes/admin/class-woohoo-admin-page.php';
@@ -64,6 +87,7 @@ final class WC_PLZ_Filter {
             require_once WC_PLZ_FILTER_DIR . 'includes/admin/class-woohoo-module-updater.php';
             require_once WC_PLZ_FILTER_DIR . 'includes/admin/class-woohoo-module-reminder.php';
             require_once WC_PLZ_FILTER_DIR . 'includes/admin/class-woohoo-module-mailer.php';
+            require_once WC_PLZ_FILTER_DIR . 'includes/admin/class-woohoo-module-widgets.php';
 
             $admin_page = Woohoo_Admin_Page::instance();
             $admin_page->register_module( new Woohoo_Module_Delivery( $this ) );
@@ -71,10 +95,13 @@ final class WC_PLZ_Filter {
             $admin_page->register_module( new Woohoo_Module_Updater( $this->updater ) );
             $admin_page->register_module( new Woohoo_Module_Reminder( $reminder ) );
             $admin_page->register_module( new Woohoo_Module_Mailer( $mailer ) );
+            $admin_page->register_module( new Woohoo_Module_Widgets() );
         }
 
         add_action( 'admin_init', [ $this, 'register_settings' ] );
         add_action( 'admin_init', [ $this, 'handle_admin_reset' ] );
+        add_action( 'admin_post_wc_plz_bust_rocket_cache', [ $this, 'handle_bust_rocket_cache' ] );
+        add_action( 'admin_notices', [ $this, 'show_rocket_cache_notice' ] );
 
         add_action( 'woocommerce_after_shipping_zone_object_save', fn() => delete_transient( self::CACHE ) );
         add_action( 'woocommerce_delete_shipping_zone', fn() => delete_transient( self::CACHE ) );
@@ -754,7 +781,12 @@ final class WC_PLZ_Filter {
      * "Delay JavaScript Execution" — dafür braucht es data-no-defer zusätzlich.
      */
     public function add_nowprocket_attr( string $tag, string $handle ): string {
-        if ( 'wc-plz-filter' !== $handle ) {
+        /**
+         * Other plugin scripts (Merkliste, Cart-Indicator, ...) hook this to
+         * add their own handle without WC_PLZ_Filter needing to know about them.
+         */
+        $our_handles = apply_filters( 'wc_plz_nowprocket_handles', [ 'wc-plz-filter' ] );
+        if ( ! in_array( $handle, $our_handles, true ) ) {
             return $tag;
         }
         return str_replace( '<script ', '<script data-no-optimize="1" data-no-minify="1" data-no-defer="1" data-nowprocket data-cfasync="false" ', $tag );
@@ -814,19 +846,23 @@ final class WC_PLZ_Filter {
         $offset_x  = (int) $s['badge_offset_x'];
         $offset_y  = (int) $s['badge_offset_y'];
 
-        // Build badge CSS classes
-        $badge_classes = 'wc-plz-badge wc-plz-badge--' . $badge_pos;
+        // Build group CSS classes (the fixed-positioned wrapper)
+        $group_classes = 'wc-plz-widget-group wc-plz-widget-group--' . $badge_pos;
         if ( $rotate && in_array( $badge_pos, [ 'left-center', 'right-center' ], true ) ) {
-            $badge_classes .= ' wc-plz-badge--rotated';
+            $group_classes .= ' wc-plz-widget-group--rotated';
         }
 
-        // Build inline style for offsets
-        $badge_style = 'display:none;';
+        // Build inline style for offsets (on the group, not the badge).
+        // display:none by default - same role the badge's own inline style
+        // used to play before it moved onto this wrapper - so the group
+        // (and whatever's in its unpopulated initial markup) never paints
+        // before plz-popup.js's updateBadge()/fadeIn() has actually run.
+        $group_style = 'display:none;';
         if ( $offset_x !== 0 ) {
-            $badge_style .= '--wc-plz-offset-x:' . $offset_x . 'px;';
+            $group_style .= '--wc-plz-offset-x:' . $offset_x . 'px;';
         }
         if ( $offset_y !== 0 ) {
-            $badge_style .= '--wc-plz-offset-y:' . $offset_y . 'px;';
+            $group_style .= '--wc-plz-offset-y:' . $offset_y . 'px;';
         }
         ?>
         <style>:root{--wc-plz-color:<?php echo esc_html( $color ); ?>;}</style>
@@ -853,15 +889,24 @@ final class WC_PLZ_Filter {
                 </div>
             </div>
         </div>
-        <button id="wc-plz-badge" class="<?php echo esc_attr( $badge_classes ); ?>" style="<?php echo esc_attr( $badge_style ); ?>" aria-label="Bestellmodus ändern">
-            <span class="wc-plz-badge__pill">
-                <span class="wc-plz-badge__dot"></span>
-                <span id="wc-plz-badge-icon" class="wc-plz-badge__icon"></span>
-                <span id="wc-plz-badge-info" class="wc-plz-badge__info"></span>
-                <span class="wc-plz-badge__edit">ändern</span>
-            </span>
-            <span id="wc-plz-badge-tooltip" class="wc-plz-badge__tooltip" role="tooltip"></span>
-        </button>
+        <div id="wc-plz-widget-group" class="<?php echo esc_attr( $group_classes ); ?>" style="<?php echo esc_attr( $group_style ); ?>">
+            <button id="wc-plz-badge" class="wc-plz-badge" aria-label="Bestellmodus ändern">
+                <span class="wc-plz-badge__pill">
+                    <span class="wc-plz-badge__dot"></span>
+                    <span id="wc-plz-badge-icon" class="wc-plz-badge__icon"></span>
+                    <span id="wc-plz-badge-info" class="wc-plz-badge__info"></span>
+                    <span class="wc-plz-badge__edit">ändern</span>
+                </span>
+                <span id="wc-plz-badge-tooltip" class="wc-plz-badge__tooltip" role="tooltip"></span>
+            </button>
+            <?php
+            /**
+             * Lets other widgets (Merkliste, ...) render their own button into
+             * the same fixed-position group without this class knowing about them.
+             */
+            do_action( 'wc_plz_widget_group_extra' );
+            ?>
+        </div>
         <?php
     }
 
@@ -887,6 +932,30 @@ final class WC_PLZ_Filter {
 
         wp_safe_redirect( add_query_arg( 'wc_plz_reset_done', '1', Woohoo_Admin_Page::tab_url( 'delivery' ) ) );
         exit;
+    }
+
+    /** Manual "Cache leeren" button on the Zusatz-Features tab - see bust_rocket_cache(). */
+    public function handle_bust_rocket_cache(): void {
+        if ( ! current_user_can( self::MANAGE_CAP ) ) {
+            wp_die( 'Insufficient permissions.', 403 );
+        }
+
+        check_admin_referer( 'wc_plz_bust_rocket_cache' );
+        self::bust_rocket_cache();
+
+        wp_safe_redirect( add_query_arg( 'wc_plz_cache_busted', '1', Woohoo_Admin_Page::tab_url( 'widgets' ) ) );
+        exit;
+    }
+
+    public function show_rocket_cache_notice(): void {
+        $screen = get_current_screen();
+        if ( ! $screen || $screen->id !== 'woocommerce_page_woohoo' ) {
+            return;
+        }
+
+        if ( isset( $_GET['wc_plz_cache_busted'] ) ) {
+            echo '<div class="notice notice-success is-dismissible"><p>WP Rocket-Cache geleert.</p></div>';
+        }
     }
 
     public function register_settings(): void {

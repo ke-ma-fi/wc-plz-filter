@@ -1,0 +1,31 @@
+/* WC PLZ-Filter – Cart-Indicator */
+
+/* ─── Umrandung des Add-to-Cart-Buttons, wenn im Warenkorb (Standard-WC-Grid) ─ */
+
+.wc-plz-in-cart {
+  outline: 2px solid var(--wc-plz-color, #c00) !important;
+  outline-offset: 2px !important;
+  transition: outline-color 0.2s ease-out;
+}
+
+/* Custom-Shop-Grid (fgf-Plugin): .pinputs umschließt Mengenfeld UND
+   Add-to-Cart-Button. Eine volle Umrandung wirkt dort wie ein Rahmen um
+   zwei unabhängige Controls – stattdessen nur eine untere Linie, per
+   Pseudo-Element abgesetzt, damit Abstand und Dicke unabhängig von der
+   Höhe des Wrappers einstellbar sind. */
+.pinputs.wc-plz-in-cart {
+  position: relative;
+  outline: none !important;
+  border-bottom: none !important;
+}
+
+.pinputs.wc-plz-in-cart::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -7px;
+  height: 3px;
+  background: var(--wc-plz-color, #c00);
+}
+

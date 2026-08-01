@@ -3,7 +3,7 @@
  * Plugin Name:  DT Woohoo
  * Plugin URI:   https://fischer.digitale-theke.com
  * Description:  PLZ-Popup mit drei Modi (Abholung, Lokale Lieferung, Postversand). Filtert Produkte dynamisch nach WooCommerce-Versandklassen und füllt den Checkout vor.
- * Version:      2.9.0
+ * Version:      2.12.5
  * Author:       Metzgerei Fischer
  * License:      Proprietary
  * License URI:  https://fischer.digitale-theke.com
@@ -22,7 +22,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-// Naming convention: see NAMING.md. Internal identifiers (constants, option
+// Naming convention: see docs/NAMING.md. Internal identifiers (constants, option
 // keys, capability, AJAX actions, REST namespace, this file/folder name) stay
 // on the legacy WC_PLZ_* / wc_plz_* scheme on purpose — only the plugin's
 // display name and admin UI are branded as "DT Woohoo".

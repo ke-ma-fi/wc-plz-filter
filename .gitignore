@@ -2,14 +2,10 @@
 .DS_Store
 
 # Internal notes
-review.md
-badge-toast.md
 docs/reviews/private/
 
 # Build artifacts
 *.zip
 
-# Dev/test files
-badge-demo.html
-test-vanilla.html
-response_product_with_shippingclass_294.json
+# Local Claude Code tooling (skills, review output, worktrees, settings)
+.claude/

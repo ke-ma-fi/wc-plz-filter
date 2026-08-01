@@ -1,5 +1,5 @@
 /**
- * WC PLZ-Filter v2.7.12 – Frontend (Vanilla JS, no jQuery)
+ * WC PLZ-Filter – Frontend (Vanilla JS, no jQuery)
  * Popup (PLZ + Abholung), Badge with Tooltip, Checkout-Sync
  *
  * @copyright Metzgerei Fischer. All rights reserved.
@@ -93,16 +93,24 @@
 
     var xhr = new XMLHttpRequest();
     xhr.open("POST", url, true);
-    xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8");
+    xhr.setRequestHeader(
+      "Content-Type",
+      "application/x-www-form-urlencoded; charset=UTF-8",
+    );
     xhr.timeout = 10000;
-    xhr.ontimeout = function () { if (onError) onError(); };
+    xhr.ontimeout = function () {
+      if (onError) onError();
+    };
     xhr.onreadystatechange = function () {
       if (xhr.readyState !== 4) return;
 
       // Nonce abgelaufen (Page-Cache älter als nonce_life) → einmal frischen holen + retry
       if (!_retried && isNonceFailure(xhr)) {
         refreshNonce(function (fresh) {
-          if (!fresh) { if (onError) onError(); return; }
+          if (!fresh) {
+            if (onError) onError();
+            return;
+          }
           post(url, data, onSuccess, onError, true);
         });
         return;
@@ -126,7 +134,16 @@
 
   function fadeIn(el, duration) {
     if (!el) return;
-    el.style.display = "";
+    // Computed style, not just the inline one: an element can be hidden by
+    // a stylesheet rule rather than (or in addition to) an inline
+    // display:none, and removeProperty() alone would silently no-op then,
+    // leaving the element hidden with no further sign anything went wrong.
+    var wasHidden = window.getComputedStyle(el).display === "none";
+    if (!wasHidden) return;
+    el.style.removeProperty("display");
+    if (window.getComputedStyle(el).display === "none") {
+      el.style.display = "flex";
+    }
     el.style.opacity = "0";
     el.style.transition = "opacity " + (duration || 200) + "ms ease";
     // Force reflow before transition
@@ -211,7 +228,10 @@
       },
       function (res) {
         if (res && res.success && res.data && res.data.hidden_ids) {
-          localStorage.setItem("wc_plz_hidden_ids", JSON.stringify(res.data.hidden_ids));
+          localStorage.setItem(
+            "wc_plz_hidden_ids",
+            JSON.stringify(res.data.hidden_ids),
+          );
         }
         if (callback) callback(res);
       },
@@ -260,7 +280,8 @@
       }
       if (icon) icon.textContent = "\uD83D\uDCCD";
       if (info) info.textContent = D.badgeCtaText || "PLZ eingeben";
-      fadeIn(badge, 300);
+      var groupCta = document.getElementById("wc-plz-widget-group");
+      fadeIn(groupCta || badge, 300);
       return;
     }
 
@@ -310,7 +331,8 @@
         break;
     }
 
-    fadeIn(badge, 300);
+    var group = document.getElementById("wc-plz-widget-group");
+    fadeIn(group || badge, 300);
   }
 
   /* ── Hidden IDs Fetching ────────────────────── */
@@ -325,9 +347,15 @@
         try {
           var res = JSON.parse(xhr.responseText);
           if (res.success && res.data && res.data.ids) {
-            localStorage.setItem("wc_plz_hidden_ids", JSON.stringify(res.data.ids));
+            localStorage.setItem(
+              "wc_plz_hidden_ids",
+              JSON.stringify(res.data.ids),
+            );
             if (Array.isArray(res.data.slugs)) {
-              localStorage.setItem("wc_plz_hidden_slugs", JSON.stringify(res.data.slugs));
+              localStorage.setItem(
+                "wc_plz_hidden_slugs",
+                JSON.stringify(res.data.slugs),
+              );
             }
             applyHiddenIds();
           }
@@ -341,19 +369,31 @@
     var styleEl = document.getElementById("wc-plz-hide-style");
     if (state.mode === "post") {
       var ids = [];
-      try { ids = JSON.parse(localStorage.getItem("wc_plz_hidden_ids") || "[]"); } catch(e) {}
+      try {
+        ids = JSON.parse(localStorage.getItem("wc_plz_hidden_ids") || "[]");
+      } catch (e) {}
       var slugs = [];
-      try { slugs = JSON.parse(localStorage.getItem("wc_plz_hidden_slugs") || "[]"); } catch(e) {}
+      try {
+        slugs = JSON.parse(localStorage.getItem("wc_plz_hidden_slugs") || "[]");
+      } catch (e) {}
 
       var sel = "";
       if (ids.length) {
         // .pdb{ID} = fgf-Custom-Grid; .products .post-{ID} = WC-Standard-Loops
         // (Cross-Sells / Up-Sells / Related / Shop). Niemals body.post-{ID} oder
         // article.post-{ID} matchen, sonst verschwindet die Single-Product-Page.
-        sel = ids.map(function(id){ return ".pdb" + id + ", .products .post-" + id; }).join(",");
+        sel = ids
+          .map(function (id) {
+            return ".pdb" + id + ", .products .post-" + id;
+          })
+          .join(",");
       }
       if (slugs.length) {
-        var cSel = slugs.map(function(s){ return '.jet-woo-products__inner-box:has(a[href*="/' + s + '/"])'; }).join(",");
+        var cSel = slugs
+          .map(function (s) {
+            return '.jet-woo-products__inner-box:has(a[href*="/' + s + '/"])';
+          })
+          .join(",");
         sel = sel ? sel + "," + cSel : cSel;
       }
 
@@ -427,7 +467,10 @@
 
         var r = res.data;
         if (r.hidden_ids) {
-          localStorage.setItem("wc_plz_hidden_ids", JSON.stringify(r.hidden_ids));
+          localStorage.setItem(
+            "wc_plz_hidden_ids",
+            JSON.stringify(r.hidden_ids),
+          );
         }
         setFeedback(r.message, r.is_local ? "ok" : "warn");
 
@@ -452,7 +495,11 @@
 
   function init() {
     updateBadge(state.mode, state.plz);
-    if (!state.mode && !parseInt(D.isCheckout, 10) && (D.popupTrigger === "immediate" || getCookie("woocommerce_items_in_cart"))) {
+    if (
+      !state.mode &&
+      !parseInt(D.isCheckout, 10) &&
+      (D.popupTrigger === "immediate" || getCookie("woocommerce_items_in_cart"))
+    ) {
       setTimeout(openPopup, 800);
     }
 
@@ -460,14 +507,23 @@
     fetchHiddenIds();
 
     // Client-side redirect für gecachte Produktseiten (WP Rocket umgehung)
-    if (state.mode === "post" && document.body.classList.contains("single-product")) {
+    if (
+      state.mode === "post" &&
+      document.body.classList.contains("single-product")
+    ) {
       var hiddenSlugs = [];
-      try { hiddenSlugs = JSON.parse(localStorage.getItem("wc_plz_hidden_slugs") || "[]"); } catch(e) {}
+      try {
+        hiddenSlugs = JSON.parse(
+          localStorage.getItem("wc_plz_hidden_slugs") || "[]",
+        );
+      } catch (e) {}
       if (hiddenSlugs.length) {
         var pageSlug = location.pathname.replace(/\/$/, "").split("/").pop();
         if (hiddenSlugs.indexOf(pageSlug) !== -1) {
           var back = document.referrer || "/";
-          location.replace(back + (back.indexOf("?") >= 0 ? "&" : "?") + "plz_blocked=1");
+          location.replace(
+            back + (back.indexOf("?") >= 0 ? "&" : "?") + "plz_blocked=1",
+          );
         }
       }
     }
@@ -575,15 +631,18 @@
             D.ajaxUrl,
             {
               action: "wc_plz_save",
-                    mode: state.mode,
+              mode: state.mode,
               plz: newPlz,
             },
             function (res) {
               if (res && res.success && res.data && res.data.hidden_ids) {
-                localStorage.setItem("wc_plz_hidden_ids", JSON.stringify(res.data.hidden_ids));
+                localStorage.setItem(
+                  "wc_plz_hidden_ids",
+                  JSON.stringify(res.data.hidden_ids),
+                );
                 applyHiddenIds();
               }
-            }
+            },
           );
         }
       });
@@ -608,4 +667,47 @@
   } else {
     init();
   }
+
+  // Shared tile utilities — used by merkliste.js and cart-indicator.js
+  window.wcPlzTiles = {
+    getProductIdFromEl: function (el) {
+      if (!el) return null;
+      var classes = el.className || "";
+      var m = classes.match(/\bpdb(\d+)\b/);
+      if (m) return parseInt(m[1], 10);
+      m = classes.match(/\bpost-(\d+)\b/);
+      if (m) return parseInt(m[1], 10);
+      if (el.dataset && el.dataset.productId)
+        return parseInt(el.dataset.productId, 10);
+      return null;
+    },
+    getAllTiles: function () {
+      var seen = new Set();
+      var results = [];
+      document.querySelectorAll("[class*='pdb']").forEach(function (el) {
+        if (/\bpdb\d+\b/.test(el.className) && !seen.has(el)) {
+          seen.add(el);
+          results.push(el);
+        }
+      });
+      document
+        .querySelectorAll(".products li[class*='post-']")
+        .forEach(function (el) {
+          if (/\bpost-\d+\b/.test(el.className) && !seen.has(el)) {
+            seen.add(el);
+            results.push(el);
+          }
+        });
+      return results;
+    },
+    getImageWrapper: function (tile) {
+      var fig = tile.querySelector("figure");
+      if (fig) return fig;
+      var links = tile.querySelectorAll("a");
+      for (var i = 0; i < links.length; i++) {
+        if (links[i].querySelector("img")) return links[i];
+      }
+      return tile;
+    },
+  };
 })();
