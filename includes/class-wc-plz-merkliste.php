@@ -187,8 +187,12 @@ final class WC_PLZ_Merkliste {
     public function render_stats_block(): void {
         $stats      = $this->get_stats();
         $reset_done = isset( $_GET['wc_plz_merkliste_stats_reset_done'] );
+        // "init" is a reach baseline (fires on every page view where the
+        // widget script loads, regardless of wishlist content) so the other
+        // rows can be read as rates against it, not a count of visitors
+        // who already have items saved.
         $labels     = [
-            'init'         => 'Seitenaufrufe mit aktiver Merkliste',
+            'init'         => 'Seitenaufrufe (Merkliste-Widget aktiv)',
             'add'          => 'Produkte hinzugefügt',
             'remove'       => 'Produkte entfernt',
             'popover_open' => 'Popover geöffnet',
