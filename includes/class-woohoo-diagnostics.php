@@ -10,11 +10,19 @@
  * Ablauf der TTL liegen. Läuft WP-Cron nicht, räumt niemand auf und die
  * Reste sammeln sich unbegrenzt.
  *
- * Alle Abfragen sind links-verankerte LIKE-Prefixe, damit der UNIQUE-Index
- * auf option_name greift - ein voller Table-Scan auf einer mehrere GB
- * grossen wp_options wäre sonst nicht bedienbar. Die beiden unvermeidbar
- * teuren Auswertungen (Autoload-Summe, grösste Einträge) hängen deshalb an
- * eigenen Buttons und laufen nie beim blossen Öffnen des Tabs.
+ * Zur Laufzeit der Abfragen: die LIKE-Prefixe sind links-verankert und
+ * finden ihre Zeilen über den UNIQUE-Index auf option_name. Der Index
+ * enthält aber option_value nicht - SUM(LENGTH(option_value)) erzwingt
+ * deshalb pro Treffer einen Rücksprung in den Clustered Index. Auf einer
+ * mehrere GB grossen Tabelle bedeutet das faktisch, dass die halbe Tabelle
+ * von der Platte gelesen wird. Das killt keinen Server, verdrängt aber den
+ * InnoDB-Buffer-Pool und macht den Shop für alle Besucher langsam.
+ *
+ * Deshalb bekommt jede lesende Abfrage hier ein hartes serverseitiges
+ * Zeitlimit (MySQL: max_execution_time, MariaDB: max_statement_time). Läuft
+ * sie darüber, bricht der Server sie selbst ab. Ein Abbruch wird als solcher
+ * ausgewiesen und niemals als "0" dargestellt - eine still falsche Zahl wäre
+ * schlimmer als gar keine.
  *
  * @copyright Metzgerei Fischer. All rights reserved.
  */
@@ -39,6 +47,15 @@ final class Woohoo_Diagnostics {
     const LARGEST_LIMIT = 20;
 
     /**
+     * Serverseitige Zeitlimits in Sekunden. Bewusst knapp: die Zahlen sind
+     * eine Diagnose, kein Report - lieber ein sauberes "abgebrochen" als ein
+     * leergefegter Buffer-Pool.
+     */
+    const TIMEOUT_QUICK = 3;  // Tabellengrösse beim Öffnen des Tabs
+    const TIMEOUT_SCAN  = 5;  // Aufteilung nach Verursacher
+    const TIMEOUT_DEEP  = 15; // Detailanalyse (unvermeidbare Full-Scans)
+
+    /**
      * Key-Prefixe der plugin-eigenen Transients. Wert- und Timeout-Zeile
      * sind getrennte wp_options-Rows, beide zählen zum Verbrauch.
      */
@@ -47,8 +64,133 @@ final class Woohoo_Diagnostics {
         'stats'  => [ '_transient_wplzs_',          '_transient_timeout_wplzs_' ],
     ];
 
+    /** Ergebnis der einmaligen Server-Erkennung: [Variablenname, Einheit] oder null. */
+    private ?array $limit_support = null;
+    private bool $limit_probed    = false;
+
     private function __construct() {
         add_action( 'admin_init', [ $this, 'handle_actions' ] );
+    }
+
+    /* ── Serverseitiges Zeitlimit ────────────────── */
+
+    /**
+     * MySQL ab 5.7.8 kennt max_execution_time (Millisekunden, greift nur bei
+     * lesenden SELECTs). MariaDB kennt stattdessen max_statement_time
+     * (Sekunden, als Dezimalzahl). Beide sind Session-Variablen, also ohne
+     * Sonderrechte setzbar. Ältere Server haben keins von beidem - dann gibt
+     * es hier null und die UI weist darauf hin, dass ungeschützt gemessen wird.
+     *
+     * @return array{0:string,1:string}|null [Variablenname, 'ms'|'s']
+     */
+    private function limit_support(): ?array {
+        if ( $this->limit_probed ) {
+            return $this->limit_support;
+        }
+        $this->limit_probed = true;
+
+        global $wpdb;
+        $suppress = $wpdb->suppress_errors( true );
+
+        if ( $wpdb->get_var( 'SELECT @@SESSION.max_execution_time' ) !== null ) {
+            $this->limit_support = [ 'max_execution_time', 'ms' ];
+        } else {
+            $wpdb->flush();
+            if ( $wpdb->get_var( 'SELECT @@SESSION.max_statement_time' ) !== null ) {
+                $this->limit_support = [ 'max_statement_time', 's' ];
+            }
+        }
+
+        $wpdb->flush();
+        $wpdb->suppress_errors( $suppress );
+
+        return $this->limit_support;
+    }
+
+    public function has_time_limit(): bool {
+        return $this->limit_support() !== null;
+    }
+
+    /** @return array{var:string,previous:mixed}|null */
+    private function apply_limit( int $seconds ): ?array {
+        $support = $this->limit_support();
+        if ( $support === null ) {
+            return null;
+        }
+
+        [ $var, $unit ] = $support;
+
+        global $wpdb;
+        $previous = $wpdb->get_var( "SELECT @@SESSION.{$var}" );
+        $value    = $unit === 'ms' ? $seconds * 1000 : $seconds;
+
+        $wpdb->query( "SET SESSION {$var} = {$value}" );
+
+        return [ 'var' => $var, 'unit' => $unit, 'previous' => $previous ];
+    }
+
+    private function restore_limit( ?array $state ): void {
+        if ( $state === null ) {
+            return;
+        }
+
+        global $wpdb;
+        // Zurück auf den Ausgangswert, damit das Limit nicht im restlichen
+        // Request hängen bleibt (die Verbindung wird ja weiterverwendet).
+        // MariaDBs max_statement_time ist ein Double (Sekunden, auch
+        // Bruchteile), MySQLs max_execution_time eine Ganzzahl in ms - sonst
+        // würde ein voreingestelltes 0.5 beim Zurücksetzen zu 0 werden.
+        $wpdb->query(
+            $state['unit'] === 'ms'
+                ? $wpdb->prepare( "SET SESSION {$state['var']} = %d", (int) $state['previous'] )
+                : $wpdb->prepare( "SET SESSION {$state['var']} = %f", (float) $state['previous'] )
+        );
+    }
+
+    /**
+     * Führt eine lesende Abfrage unter Zeitlimit aus.
+     *
+     * @param  callable $run Gibt das Abfrageergebnis zurück.
+     * @return array{value:mixed,timed_out:bool}
+     */
+    private function timed( int $seconds, callable $run ): array {
+        global $wpdb;
+
+        $state    = $this->apply_limit( $seconds );
+        $suppress = $wpdb->suppress_errors( true );
+
+        $value = $run();
+        $error = (string) $wpdb->last_error;
+
+        $wpdb->flush();
+        $wpdb->suppress_errors( $suppress );
+        $this->restore_limit( $state );
+
+        $timed_out = $this->is_timeout_error( $error );
+
+        return [
+            'value'     => $timed_out ? null : $value,
+            'timed_out' => $timed_out,
+        ];
+    }
+
+    /**
+     * MySQL 3024: "Query execution was interrupted, maximum statement
+     * execution time exceeded". MariaDB 1969: "Query execution was
+     * interrupted (max_statement_time exceeded)". Beide Formulierungen
+     * abdecken, ohne auf einen Fehlercode zu bauen, den $wpdb nicht
+     * durchreicht.
+     */
+    private function is_timeout_error( string $error ): bool {
+        if ( $error === '' ) {
+            return false;
+        }
+        foreach ( [ 'max_statement_time', 'maximum statement execution time', 'execution was interrupted' ] as $needle ) {
+            if ( stripos( $error, $needle ) !== false ) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /* ── Umgebung ────────────────────────────────── */
@@ -109,28 +251,34 @@ final class Woohoo_Diagnostics {
      * und zeigt zusätzlich data_free, also den nach einem DELETE weiterhin
      * belegten, aber wiederverwendbaren Platz. Manche Managed-Hoster sperren
      * information_schema, dann gibt es hier null und die UI sagt das auch.
+     *
+     * Trotzdem unter Zeitlimit: steht innodb_stats_on_metadata auf ON, löst
+     * schon diese Abfrage eine Neuberechnung der Index-Statistiken aus.
      */
     public function get_table_size(): ?array {
         global $wpdb;
 
-        $row = $wpdb->get_row( $wpdb->prepare(
-            "SELECT data_length, index_length, data_free, table_rows
-             FROM information_schema.TABLES
-             WHERE table_schema = DATABASE() AND table_name = %s",
-            $wpdb->options
-        ), ARRAY_A );
+        $result = $this->timed( self::TIMEOUT_QUICK, function () use ( $wpdb ) {
+            return $wpdb->get_row( $wpdb->prepare(
+                "SELECT data_length, index_length, data_free, table_rows
+                 FROM information_schema.TABLES
+                 WHERE table_schema = DATABASE() AND table_name = %s",
+                $wpdb->options
+            ), ARRAY_A );
+        } );
 
-        if ( ! $row ) {
+        $row = $result['value'];
+        if ( ! is_array( $row ) ) {
             return null;
         }
 
         return [
-            'data'      => (int) $row['data_length'],
-            'index'     => (int) $row['index_length'],
-            'free'      => (int) $row['data_free'],
-            'total'     => (int) $row['data_length'] + (int) $row['index_length'],
+            'data'     => (int) $row['data_length'],
+            'index'    => (int) $row['index_length'],
+            'free'     => (int) $row['data_free'],
+            'total'    => (int) $row['data_length'] + (int) $row['index_length'],
             // InnoDB schätzt table_rows nur - als exakte Zahl taugt das nicht.
-            'rows_est'  => (int) $row['table_rows'],
+            'rows_est' => (int) $row['table_rows'],
         ];
     }
 
@@ -142,8 +290,9 @@ final class Woohoo_Diagnostics {
     }
 
     /**
-     * Zählt Zeilen und Bytes je Kategorie. Jede Abfrage ist ein
-     * links-verankerter Prefix und nutzt damit den option_name-Index.
+     * Zählt Zeilen und Bytes je Kategorie. Jede Einzelabfrage steht unter
+     * Zeitlimit; bricht eine ab, wird die betroffene Kategorie als
+     * "abgebrochen" markiert statt mit einer Teilsumme ausgewiesen.
      */
     public function run_scan(): array {
         global $wpdb;
@@ -151,29 +300,48 @@ final class Woohoo_Diagnostics {
         $hidden = $this->measure_prefixes( self::OWN_PREFIXES['hidden'] );
         $stats  = $this->measure_prefixes( self::OWN_PREFIXES['stats'] );
 
-        $all_transients = $this->measure_prefixes( [ '_transient_', '_site_transient_' ] );
+        // Der teuerste Posten: matcht sämtliche Transients inklusive fremder,
+        // und liest dafür deren komplette Werte.
+        $all = $this->measure_prefixes( [ '_transient_', '_site_transient_' ] );
+
+        $total = $this->timed( self::TIMEOUT_SCAN, function () use ( $wpdb ) {
+            return $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->options}" );
+        } );
 
         $scan = [
-            'ts'             => time(),
-            'hidden'         => $hidden,
-            'stats'          => $stats,
-            'own_total'      => [
-                'rows'  => $hidden['rows'] + $stats['rows'],
-                'bytes' => $hidden['bytes'] + $stats['bytes'],
-            ],
-            'other_transients' => [
-                'rows'  => max( 0, $all_transients['rows'] - $hidden['rows'] - $stats['rows'] ),
-                'bytes' => max( 0, $all_transients['bytes'] - $hidden['bytes'] - $stats['bytes'] ),
-            ],
-            'total_rows'     => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->options}" ),
-            'expired'        => $this->count_expired_transients(),
+            'ts'               => time(),
+            'limit_active'     => $this->has_time_limit(),
+            'hidden'           => $hidden,
+            'stats'            => $stats,
+            'other_transients' => $this->subtract( $all, $hidden, $stats ),
+            'total_rows'       => $total['timed_out'] ? null : (int) $total['value'],
+            'expired'          => $this->count_expired_transients(),
         ];
 
         set_transient( self::SCAN_CACHE, $scan, self::SCAN_CACHE_TTL );
         return $scan;
     }
 
-    /** @param string[] $prefixes */
+    /**
+     * "Fremde Transients" ist eine Differenz - sobald einer der drei
+     * Summanden abgebrochen ist, ist sie nicht mehr belastbar.
+     */
+    private function subtract( array $all, array $hidden, array $stats ): array {
+        if ( $all['timed_out'] || $hidden['timed_out'] || $stats['timed_out'] ) {
+            return [ 'rows' => null, 'bytes' => null, 'timed_out' => true ];
+        }
+
+        return [
+            'rows'      => max( 0, $all['rows'] - $hidden['rows'] - $stats['rows'] ),
+            'bytes'     => max( 0, $all['bytes'] - $hidden['bytes'] - $stats['bytes'] ),
+            'timed_out' => false,
+        ];
+    }
+
+    /**
+     * @param  string[] $prefixes
+     * @return array{rows:?int,bytes:?int,timed_out:bool}
+     */
     private function measure_prefixes( array $prefixes ): array {
         global $wpdb;
 
@@ -181,71 +349,101 @@ final class Woohoo_Diagnostics {
         $bytes = 0;
 
         foreach ( $prefixes as $prefix ) {
-            $row = $wpdb->get_row( $wpdb->prepare(
-                "SELECT COUNT(*) AS n, COALESCE(SUM(LENGTH(option_value)), 0) AS bytes
-                 FROM {$wpdb->options}
-                 WHERE option_name LIKE %s",
-                $wpdb->esc_like( $prefix ) . '%'
-            ), ARRAY_A );
+            $result = $this->timed( self::TIMEOUT_SCAN, function () use ( $wpdb, $prefix ) {
+                return $wpdb->get_row( $wpdb->prepare(
+                    "SELECT COUNT(*) AS n, COALESCE(SUM(LENGTH(option_value)), 0) AS bytes
+                     FROM {$wpdb->options}
+                     WHERE option_name LIKE %s",
+                    $wpdb->esc_like( $prefix ) . '%'
+                ), ARRAY_A );
+            } );
 
+            if ( $result['timed_out'] ) {
+                return [ 'rows' => null, 'bytes' => null, 'timed_out' => true ];
+            }
+
+            $row    = is_array( $result['value'] ) ? $result['value'] : [];
             $rows  += (int) ( $row['n'] ?? 0 );
             $bytes += (int) ( $row['bytes'] ?? 0 );
         }
 
-        return [ 'rows' => $rows, 'bytes' => $bytes ];
+        return [ 'rows' => $rows, 'bytes' => $bytes, 'timed_out' => false ];
     }
 
     /**
      * Abgelaufene, aber noch vorhandene Transients - das ist der Müll, den
      * delete_expired_transients() abräumen würde, wenn Cron liefe. Gezählt
      * wird über die Timeout-Zeilen; die zugehörigen Wert-Zeilen kommen in
-     * gleicher Zahl dazu.
+     * gleicher Zahl dazu. Deutlich billiger als die Wert-Abfragen oben, weil
+     * Timeout-Zeilen nur einen Unix-Zeitstempel enthalten.
+     *
+     * @return ?int null = abgebrochen
      */
-    private function count_expired_transients(): int {
+    private function count_expired_transients(): ?int {
         global $wpdb;
 
-        return (int) $wpdb->get_var( $wpdb->prepare(
-            "SELECT COUNT(*) FROM {$wpdb->options}
-             WHERE option_name LIKE %s AND option_value + 0 < %d",
-            $wpdb->esc_like( '_transient_timeout_' ) . '%',
-            time()
-        ) );
+        $result = $this->timed( self::TIMEOUT_SCAN, function () use ( $wpdb ) {
+            return $wpdb->get_var( $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->options}
+                 WHERE option_name LIKE %s AND option_value + 0 < %d",
+                $wpdb->esc_like( '_transient_timeout_' ) . '%',
+                time()
+            ) );
+        } );
+
+        return $result['timed_out'] ? null : (int) $result['value'];
     }
 
     /* ── Teure Zusatz-Auswertungen ───────────────── */
 
     /**
-     * Voller Table-Scan mit Filesort. Auf einer stark gewachsenen Tabelle
-     * dauert das entsprechend - deshalb nur auf ausdrücklichen Klick und
-     * nie automatisch. Beantwortet die eigentliche Frage: sind es wirklich
-     * wir, oder bläht ein anderes Plugin die Tabelle auf?
+     * Voller Table-Scan mit Filesort: LENGTH(option_value) lässt sich nicht
+     * indizieren, also muss jede Zeile angefasst werden. Nur auf
+     * ausdrücklichen Klick, mit dem grosszügigeren Deep-Limit - und selbst
+     * das bricht lieber ab, als den Buffer-Pool leerzuräumen.
+     *
+     * @return array{rows:array,timed_out:bool}
      */
     public function get_largest_options(): array {
         global $wpdb;
 
-        $rows = $wpdb->get_results( $wpdb->prepare(
-            "SELECT option_name, LENGTH(option_value) AS bytes, autoload
-             FROM {$wpdb->options}
-             ORDER BY LENGTH(option_value) DESC
-             LIMIT %d",
-            self::LARGEST_LIMIT
-        ), ARRAY_A );
+        $result = $this->timed( self::TIMEOUT_DEEP, function () use ( $wpdb ) {
+            return $wpdb->get_results( $wpdb->prepare(
+                "SELECT option_name, LENGTH(option_value) AS bytes, autoload
+                 FROM {$wpdb->options}
+                 ORDER BY LENGTH(option_value) DESC
+                 LIMIT %d",
+                self::LARGEST_LIMIT
+            ), ARRAY_A );
+        } );
 
-        return is_array( $rows ) ? $rows : [];
+        return [
+            'rows'      => is_array( $result['value'] ) ? $result['value'] : [],
+            'timed_out' => $result['timed_out'],
+        ];
     }
 
-    /** Ebenfalls voller Scan: was wird bei jedem Seitenaufruf mitgeladen? */
+    /**
+     * Ebenfalls voller Scan: was wird bei jedem Seitenaufruf mitgeladen?
+     *
+     * @return array{rows:array,timed_out:bool}
+     */
     public function get_autoload_summary(): array {
         global $wpdb;
 
-        $rows = $wpdb->get_results(
-            "SELECT autoload, COUNT(*) AS n, COALESCE(SUM(LENGTH(option_value)), 0) AS bytes
-             FROM {$wpdb->options}
-             GROUP BY autoload",
-            ARRAY_A
-        );
+        $result = $this->timed( self::TIMEOUT_DEEP, function () use ( $wpdb ) {
+            return $wpdb->get_results(
+                "SELECT autoload, COUNT(*) AS n, COALESCE(SUM(LENGTH(option_value)), 0) AS bytes
+                 FROM {$wpdb->options}
+                 GROUP BY autoload",
+                ARRAY_A
+            );
+        } );
 
-        return is_array( $rows ) ? $rows : [];
+        return [
+            'rows'      => is_array( $result['value'] ) ? $result['value'] : [],
+            'timed_out' => $result['timed_out'],
+        ];
     }
 
     /* ── Aufräumen ───────────────────────────────── */
@@ -258,6 +456,10 @@ final class Woohoo_Diagnostics {
      * Gestückelt mit Zeitbudget. Wird das Budget aufgebraucht, meldet die
      * Funktion done=false und der Aufruf lässt sich einfach wiederholen,
      * statt in ein PHP-Timeout mitten in einer Riesen-Transaktion zu laufen.
+     *
+     * Hinweis: MySQLs max_execution_time greift nur bei lesenden SELECTs,
+     * schützt hier also nicht - das Zeitbudget zwischen den Blöcken ist die
+     * einzige Bremse. Deshalb bleiben die Blöcke bewusst klein.
      */
     public function purge_own_transients(): array {
         global $wpdb;
@@ -295,6 +497,10 @@ final class Woohoo_Diagnostics {
      * Core-Aufräumroutine für abgelaufene Transients aller Plugins - genau
      * das, was der tägliche wp_scheduled_delete-Cron tut. force=true, damit
      * sie auch bei externem Object-Cache durchläuft.
+     *
+     * Bewusst ohne Zeitlimit-Wrapper: das ist Core-Code, dessen Abfragen wir
+     * nicht kontrollieren, und ein halb abgebrochener Aufräumlauf wäre
+     * schlechter als ein langsamer.
      */
     public function purge_expired_transients(): void {
         delete_expired_transients( true );

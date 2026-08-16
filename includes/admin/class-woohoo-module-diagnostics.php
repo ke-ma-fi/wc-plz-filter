@@ -204,12 +204,16 @@ final class Woohoo_Module_Diagnostics implements Woohoo_Module_Interface {
         $scan = $this->diagnostics->get_cached_scan();
         ?>
         <h2 style="margin-top:28px;">Aufteilung nach Verursacher</h2>
+        <?php $this->render_limit_warning(); ?>
+        <p class="description" style="max-width:860px;margin-bottom:12px;">
+            Der Index auf <code>option_name</code> findet die Zeilen schnell, enthält aber
+            <code>option_value</code> nicht – die Grössensumme muss die Werte trotzdem einzeln lesen.
+            Auf einer sehr grossen Tabelle ist das teuer, deshalb bricht der Server jede Abfrage nach
+            wenigen Sekunden selbst ab. Abgebrochene Werte werden als solche ausgewiesen, nie als 0.
+        </p>
         <form method="post" style="margin-bottom:12px;">
             <?php wp_nonce_field( 'wc_plz_diag_scan' ); ?>
             <?php submit_button( $scan ? 'Scan wiederholen' : 'Scan starten', 'primary', 'wc_plz_diag_scan', false ); ?>
-            <span class="description" style="margin-left:8px;">
-                Nutzt den Index auf <code>option_name</code>, läuft daher auch auf grossen Tabellen zügig.
-            </span>
         </form>
 
         <?php if ( ! $scan ) : ?>
@@ -233,15 +237,25 @@ final class Woohoo_Module_Diagnostics implements Woohoo_Module_Interface {
                 ?>
                 <tr>
                     <td><strong>Zeilen insgesamt in <code>wp_options</code></strong></td>
-                    <td colspan="2"><strong><?php echo esc_html( number_format_i18n( (int) $scan['total_rows'] ) ); ?></strong></td>
+                    <td colspan="2">
+                        <?php if ( $scan['total_rows'] === null ) : ?>
+                            <?php echo $this->aborted_label(); ?>
+                        <?php else : ?>
+                            <strong><?php echo esc_html( number_format_i18n( (int) $scan['total_rows'] ) ); ?></strong>
+                        <?php endif; ?>
+                    </td>
                 </tr>
                 <tr>
                     <td><strong>Abgelaufen, aber noch vorhanden</strong></td>
                     <td colspan="2">
-                        <?php echo esc_html( number_format_i18n( (int) $scan['expired'] ) ); ?> Timeout-Zeilen
-                        <span class="description">
-                            (plus je eine zugehörige Wert-Zeile) – das wäre die Beute eines Cron-Laufs
-                        </span>
+                        <?php if ( $scan['expired'] === null ) : ?>
+                            <?php echo $this->aborted_label(); ?>
+                        <?php else : ?>
+                            <?php echo esc_html( number_format_i18n( (int) $scan['expired'] ) ); ?> Timeout-Zeilen
+                            <span class="description">
+                                (plus je eine zugehörige Wert-Zeile) – das wäre die Beute eines Cron-Laufs
+                            </span>
+                        <?php endif; ?>
                     </td>
                 </tr>
             </tbody>
@@ -258,10 +272,46 @@ final class Woohoo_Module_Diagnostics implements Woohoo_Module_Interface {
         ?>
         <tr>
             <td><?php echo $is_own ? '<strong>' . esc_html( $label ) . '</strong>' : esc_html( $label ); ?></td>
-            <td><?php echo esc_html( number_format_i18n( (int) $bucket['rows'] ) ); ?></td>
-            <td><?php echo esc_html( size_format( (int) $bucket['bytes'], 1 ) ); ?></td>
+            <?php if ( ! empty( $bucket['timed_out'] ) ) : ?>
+                <td colspan="2"><?php echo $this->aborted_label(); ?></td>
+            <?php else : ?>
+                <td><?php echo esc_html( number_format_i18n( (int) $bucket['rows'] ) ); ?></td>
+                <td><?php echo esc_html( size_format( (int) $bucket['bytes'], 1 ) ); ?></td>
+            <?php endif; ?>
         </tr>
         <?php
+    }
+
+    /**
+     * Ohne serverseitiges Zeitlimit läuft jede Abfrage bis zum Ende durch -
+     * das muss sichtbar sein, sonst wiegt sich der Betreiber in einer
+     * Sicherheit, die es auf diesem Server nicht gibt.
+     */
+    private function render_limit_warning(): void {
+        if ( $this->diagnostics->has_time_limit() ) {
+            return;
+        }
+        ?>
+        <div class="notice notice-warning inline" style="margin:0 0 12px;max-width:860px;">
+            <p>
+                <strong>Kein serverseitiges Zeitlimit verfügbar.</strong>
+                Dieser Datenbankserver kennt weder <code>max_execution_time</code> (MySQL ab 5.7.8)
+                noch <code>max_statement_time</code> (MariaDB). Die Abfragen laufen hier ungebremst
+                bis zum Ende – auf einer sehr grossen Tabelle kann das den Shop spürbar ausbremsen.
+                Auswertung in dem Fall besser über WP-CLI statt im Browser.
+            </p>
+        </div>
+        <?php
+    }
+
+    /**
+     * Ein abgebrochener Wert darf nie als "0" durchgehen - das wäre eine
+     * still falsche Aussage genau an der Stelle, an der die Zahl zählt.
+     */
+    private function aborted_label(): string {
+        return '<span style="color:#d63638;font-weight:600;">Abfrage abgebrochen</span> '
+             . '<span class="description">Zeitlimit erreicht – die Tabelle ist zu gross für diese Auswertung im Browser. '
+             . 'Bitte über WP-CLI messen.</span>';
     }
 
     /* ── Teure Auswertungen ──────────────────────── */
@@ -270,9 +320,10 @@ final class Woohoo_Module_Diagnostics implements Woohoo_Module_Interface {
         $show = isset( $_GET['wc_plz_diag_deep'] );
         ?>
         <h2 style="margin-top:28px;">Detailanalyse</h2>
-        <p class="description" style="margin-bottom:12px;">
-            Voller Table-Scan über <code>wp_options</code>. Auf einer stark gewachsenen Tabelle
-            dauert das spürbar – deshalb nur auf ausdrücklichen Aufruf.
+        <p class="description" style="margin-bottom:12px;max-width:860px;">
+            Voller Table-Scan über <code>wp_options</code>: <code>LENGTH(option_value)</code> lässt sich
+            nicht indizieren, jede Zeile muss angefasst werden. Deshalb nur auf ausdrücklichen Aufruf,
+            mit einem längeren, aber weiterhin harten Zeitlimit.
         </p>
 
         <?php if ( ! $show ) : ?>
@@ -282,13 +333,17 @@ final class Woohoo_Module_Diagnostics implements Woohoo_Module_Interface {
             <?php return; ?>
         <?php endif; ?>
 
+        <?php $autoload = $this->diagnostics->get_autoload_summary(); ?>
         <h3>Autoload</h3>
+        <?php if ( $autoload['timed_out'] ) : ?>
+            <p><?php echo $this->aborted_label(); ?></p>
+        <?php else : ?>
         <table class="widefat striped" style="max-width:860px;margin-bottom:20px;">
             <thead>
                 <tr><th>autoload</th><th style="width:140px;">Zeilen</th><th style="width:140px;">Grösse</th></tr>
             </thead>
             <tbody>
-                <?php foreach ( $this->diagnostics->get_autoload_summary() as $row ) : ?>
+                <?php foreach ( $autoload['rows'] as $row ) : ?>
                     <tr>
                         <td><code><?php echo esc_html( (string) $row['autoload'] ); ?></code></td>
                         <td><?php echo esc_html( number_format_i18n( (int) $row['n'] ) ); ?></td>
@@ -297,18 +352,24 @@ final class Woohoo_Module_Diagnostics implements Woohoo_Module_Interface {
                 <?php endforeach; ?>
             </tbody>
         </table>
+        <?php endif; ?>
         <p class="description" style="margin-top:-12px;margin-bottom:20px;">
             Autoload-Einträge werden bei <em>jedem</em> Seitenaufruf geladen. Alles über ein paar
             hundert Kilobyte ist hier ein Performance-Problem, unabhängig von der Gesamtgrösse.
         </p>
 
+        <?php $largest = $this->diagnostics->get_largest_options(); ?>
         <h3>Grösste Einträge</h3>
+        <?php if ( $largest['timed_out'] ) : ?>
+            <p><?php echo $this->aborted_label(); ?></p>
+            <?php return; ?>
+        <?php endif; ?>
         <table class="widefat striped" style="max-width:860px;">
             <thead>
                 <tr><th>option_name</th><th style="width:120px;">Grösse</th><th style="width:100px;">autoload</th></tr>
             </thead>
             <tbody>
-                <?php foreach ( $this->diagnostics->get_largest_options() as $row ) : ?>
+                <?php foreach ( $largest['rows'] as $row ) : ?>
                     <tr>
                         <td><code style="word-break:break-all;"><?php echo esc_html( (string) $row['option_name'] ); ?></code></td>
                         <td><?php echo esc_html( size_format( (int) $row['bytes'], 1 ) ); ?></td>
