@@ -5,7 +5,7 @@ final class WC_PLZ_Filter {
 
     use WC_PLZ_Singleton;
 
-    const VERSION         = '2.12.6';
+    const VERSION         = '2.12.7';
     const COOKIE          = 'wc_delivery_mode';
     const OPT             = 'wc_plz_filter_v2';
     const CACHE           = 'wc_plz_local_codes';
@@ -80,6 +80,9 @@ final class WC_PLZ_Filter {
         Woohoo_Product_Overview::instance();
 
         if ( is_admin() && ! wp_doing_ajax() ) {
+            require_once WC_PLZ_FILTER_DIR . 'includes/class-woohoo-diagnostics.php';
+            $diagnostics = Woohoo_Diagnostics::instance();
+
             require_once WC_PLZ_FILTER_DIR . 'includes/admin/interface-woohoo-module.php';
             require_once WC_PLZ_FILTER_DIR . 'includes/admin/class-woohoo-admin-page.php';
             require_once WC_PLZ_FILTER_DIR . 'includes/admin/class-woohoo-module-delivery.php';
@@ -88,6 +91,7 @@ final class WC_PLZ_Filter {
             require_once WC_PLZ_FILTER_DIR . 'includes/admin/class-woohoo-module-reminder.php';
             require_once WC_PLZ_FILTER_DIR . 'includes/admin/class-woohoo-module-mailer.php';
             require_once WC_PLZ_FILTER_DIR . 'includes/admin/class-woohoo-module-widgets.php';
+            require_once WC_PLZ_FILTER_DIR . 'includes/admin/class-woohoo-module-diagnostics.php';
 
             $admin_page = Woohoo_Admin_Page::instance();
             $admin_page->register_module( new Woohoo_Module_Delivery( $this ) );
@@ -96,6 +100,7 @@ final class WC_PLZ_Filter {
             $admin_page->register_module( new Woohoo_Module_Reminder( $reminder ) );
             $admin_page->register_module( new Woohoo_Module_Mailer( $mailer ) );
             $admin_page->register_module( new Woohoo_Module_Widgets() );
+            $admin_page->register_module( new Woohoo_Module_Diagnostics( $diagnostics ) );
         }
 
         add_action( 'admin_init', [ $this, 'register_settings' ] );

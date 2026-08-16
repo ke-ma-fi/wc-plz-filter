@@ -32,6 +32,22 @@ delete_option( 'wc_plz_cart_indicator_enabled' );
 
 // 3. Delete transients.
 delete_transient( 'wc_plz_local_codes' );
+delete_transient( 'wc_plz_diag_scan' );
+delete_option( 'wc_plz_diag_baseline' );
+
+// 3a. Versionierte Hidden-IDs- und Statistik-Transients. Die Keys tragen eine
+// laufende Version bzw. Epoch im Namen, lassen sich also nicht einzeln über
+// delete_transient() ansprechen - hier ist der LIKE-Scan angebracht, weil er
+// genau einmal beim Deinstallieren läuft.
+foreach ( [ 'wc_plz_hidden_v', 'wplzs_' ] as $prefix ) {
+	$wpdb->query(
+		$wpdb->prepare(
+			"DELETE FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s",
+			$wpdb->esc_like( '_transient_' . $prefix ) . '%',
+			$wpdb->esc_like( '_transient_timeout_' . $prefix ) . '%'
+		)
+	);
+}
 
 // 4. Remove custom capability from roles.
 foreach ( [ 'administrator', 'shop_manager' ] as $role_name ) {
