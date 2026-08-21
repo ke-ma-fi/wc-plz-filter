@@ -292,17 +292,34 @@ final class WC_PLZ_Filter {
         }, $this->get_hidden_product_ids() ) ) );
     }
 
-    public function get_hidden_product_ids(): array {
+    /**
+     * Cache key for the hidden IDs at a given version. Returns null when no
+     * shipping classes are excluded - there is no entry in that case.
+     *
+     * Deliberately kept in one place: get_hidden_product_ids() writes under
+     * this key and invalidate_hidden_ids_cache() deletes it. Were the two
+     * calculations ever to drift apart, the delete would miss, the stale
+     * entries would pile up again, and nothing would surface the problem.
+     */
+    private function hidden_cache_key( int $version ): ?string {
         $settings     = $this->get_settings();
         $excluded_ids = array_filter( array_map( 'intval', (array) $settings['excluded_classes'] ) );
         if ( empty( $excluded_ids ) ) {
-            return [];
+            return null;
         }
 
         sort( $excluded_ids );
+        return 'wc_plz_hidden_v' . $version . '_' . md5( implode( ',', $excluded_ids ) );
+    }
+
+    public function get_hidden_product_ids(): array {
         $version   = (int) get_option( self::HIDDEN_VERSION, 1 );
-        $cache_key = 'wc_plz_hidden_v' . $version . '_' . md5( implode( ',', $excluded_ids ) );
-        $cached    = get_transient( $cache_key );
+        $cache_key = $this->hidden_cache_key( $version );
+        if ( $cache_key === null ) {
+            return [];
+        }
+
+        $cached = get_transient( $cache_key );
         if ( is_array( $cached ) ) {
             return $cached;
         }
@@ -334,11 +351,28 @@ final class WC_PLZ_Filter {
     }
 
     /**
-     * Bump der Hidden-IDs-Version → alle existierenden Transients (mit alter Version
-     * im Key) werden ignoriert und verfallen via TTL. Kein wp_options-LIKE-Scan.
+     * Bump the hidden-IDs version, removing the entry of the outgoing version
+     * along the way. No wp_options LIKE scan needed: the key is known at this
+     * point, and exactly one is live.
+     *
+     * Without this delete_transient() the entry would linger until its TTL
+     * expires - and it is never read again, because the counter has moved on.
+     * The lazy expiry inside get_transient() therefore never fires, leaving
+     * the daily wp_scheduled_delete cron as the only thing that could clean it
+     * up. With cron stalled the leftovers accumulate in wp_options unbounded.
+     *
+     * Costs up to four point lookups on the UNIQUE index over option_name.
+     * Acceptable even during an import with many bumps, measured against what
+     * WooCommerce already spends per product save.
      */
     public function invalidate_hidden_ids_cache(): void {
-        $current = (int) get_option( self::HIDDEN_VERSION, 1 );
+        $current   = (int) get_option( self::HIDDEN_VERSION, 1 );
+        $cache_key = $this->hidden_cache_key( $current );
+
+        if ( $cache_key !== null ) {
+            delete_transient( $cache_key );
+        }
+
         update_option( self::HIDDEN_VERSION, $current + 1, false );
     }
 
