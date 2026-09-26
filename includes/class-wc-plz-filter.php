@@ -5,7 +5,7 @@ final class WC_PLZ_Filter {
 
     use WC_PLZ_Singleton;
 
-    const VERSION         = '2.12.8';
+    const VERSION         = '2.12.9';
     const COOKIE          = 'wc_delivery_mode';
     const OPT             = 'wc_plz_filter_v2';
     const CACHE           = 'wc_plz_local_codes';
@@ -444,6 +444,50 @@ final class WC_PLZ_Filter {
     }
 
     /**
+     * Brutto-Warenkorbwert (inkl. Steuer) für den Mindestbestellwert-Vergleich,
+     * null wenn gar kein Cart existiert (z. B. REST/Cron — dann kein Hinweis).
+     * get_subtotal() liefert netto — der Mindestbestellwert ist im Admin als
+     * Brutto-Betrag gepflegt, so wie der Kunde ihn im Warenkorb sieht. Identische
+     * Summe wie WooCommerce' eigenes get_displayed_subtotal() im Brutto-Modus.
+     */
+    private function get_cart_gross_subtotal(): ?float {
+        $cart = WC()->cart;
+        if ( ! $cart ) {
+            return null;
+        }
+
+        return (float) $cart->get_subtotal() + (float) $cart->get_subtotal_tax();
+    }
+
+    /**
+     * Mindestbestellwert-Hinweis für den übergebenen Liefermodus,
+     * '' wenn erreicht, nicht konfiguriert oder Modus irrelevant (z. B. Abholung).
+     */
+    private function get_min_order_notice( string $mode ): string {
+        if ( ! in_array( $mode, [ 'local', 'post' ], true ) ) {
+            return '';
+        }
+
+        $settings = $this->get_settings();
+        $min      = (int) ( $mode === 'local' ? $settings['min_order_local'] : $settings['min_order_post'] );
+        if ( $min <= 0 ) {
+            return '';
+        }
+
+        $subtotal = $this->get_cart_gross_subtotal();
+        if ( $subtotal === null || $subtotal >= $min ) {
+            return '';
+        }
+
+        return sprintf(
+            'Für %s gilt ein Mindestbestellwert von %s. Es fehlen noch %s.',
+            $mode === 'local' ? 'Lokallieferung' : 'Postversand',
+            wc_price( $min ),
+            wc_price( $min - $subtotal )
+        );
+    }
+
+    /**
      * Cart-Validation: Postversand-Modus + Produkt mit ausgeschlossener Klasse → Notice.
      */
     public function remove_excluded_cart_items(): void {
@@ -477,6 +521,16 @@ final class WC_PLZ_Filter {
 
     public function validate_cart_items(): void {
         $state = $this->get_state();
+
+        // Mindestbestellwert gilt für beide Liefermodi, nicht nur Postversand.
+        // Am Checkout übernimmt checkout_min_order_notice() den Hinweis — sonst doppelt.
+        if ( ! is_checkout() ) {
+            $notice = $this->get_min_order_notice( $state['mode'] );
+            if ( $notice !== '' ) {
+                wc_add_notice( $notice, 'notice' );
+            }
+        }
+
         if ( $state['mode'] !== 'post' ) {
             return;
         }
@@ -495,53 +549,15 @@ final class WC_PLZ_Filter {
                 'error'
             );
         }
-
-        if ( ! is_checkout() ) {
-        $settings = $this->get_settings();
-        $min      = (int) ( $state['mode'] === 'local' ? $settings['min_order_local'] : $settings['min_order_post'] );
-        if ( $min > 0 ) {
-            $subtotal = (float) WC()->cart->get_subtotal();
-            if ( $subtotal < $min ) {
-                $label = $state['mode'] === 'local' ? 'Lokallieferung' : 'Postversand';
-                wc_add_notice(
-                    sprintf(
-                        'Für %s gilt ein Mindestbestellwert von %s. Es fehlen noch %s.',
-                        $label,
-                        wc_price( $min ),
-                        wc_price( $min - $subtotal )
-                    ),
-                    'notice'
-                );
-            }
-        }
-        } // end ! is_checkout()
     }
 
     /**
-     * Single-Product-Page: blockiert Add-to-Cart wenn Produkt ausgeschlossen ist.
+     * Checkout: Hinweis wenn der Warenkorb unter dem Mindestbestellwert liegt.
      */
     public function checkout_min_order_notice(): void {
-        $state = $this->get_state();
-        if ( ! in_array( $state['mode'], [ 'local', 'post' ], true ) ) {
-            return;
-        }
-        $settings = $this->get_settings();
-        $min      = (int) ( $state['mode'] === 'local' ? $settings['min_order_local'] : $settings['min_order_post'] );
-        if ( $min <= 0 ) {
-            return;
-        }
-        $subtotal = (float) WC()->cart->get_subtotal();
-        if ( $subtotal < $min ) {
-            $label = $state['mode'] === 'local' ? 'Lokallieferung' : 'Postversand';
-            wc_print_notice(
-                sprintf(
-                    'Für %s gilt ein Mindestbestellwert von %s. Es fehlen noch %s.',
-                    $label,
-                    wc_price( $min ),
-                    wc_price( $min - $subtotal )
-                ),
-                'notice'
-            );
+        $notice = $this->get_min_order_notice( $this->get_state()['mode'] );
+        if ( $notice !== '' ) {
+            wc_print_notice( $notice, 'notice' );
         }
     }
 
