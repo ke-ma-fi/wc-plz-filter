@@ -99,6 +99,7 @@ final class WC_PLZ_Filter {
         }
 
         add_action( 'admin_init', [ $this, 'register_settings' ] );
+        add_action( 'admin_init', [ $this, 'register_settings_capabilities' ] );
         add_action( 'admin_init', [ $this, 'handle_admin_reset' ] );
         add_action( 'admin_post_wc_plz_bust_rocket_cache', [ $this, 'handle_bust_rocket_cache' ] );
         add_action( 'admin_notices', [ $this, 'show_rocket_cache_notice' ] );
@@ -1009,10 +1010,55 @@ final class WC_PLZ_Filter {
     }
 
     public function register_settings(): void {
+        // Save capability for this group: see settings_group_caps().
         register_setting( 'wc_plz_filter_group', self::OPT, [
             'sanitize_callback' => [ $this, 'sanitize_settings' ],
         ] );
-        add_filter( 'option_page_capability_wc_plz_filter_group', fn() => self::MANAGE_CAP );
+    }
+
+    /**
+     * Central registry: settings group => capability options.php requires
+     * to save it. EVERY register_setting() group of this plugin must be
+     * listed here - without an option_page_capability_{group} filter,
+     * options.php falls back to manage_options and accounts holding only
+     * MANAGE_CAP (shop_manager) get "Sorry, you are not allowed to modify
+     * this page." on save. See docs/notes/settings-capability-filter.md.
+     *
+     * Groups mapped to MANAGE_CAP are saveable by manage_options OR
+     * MANAGE_CAP (admins whose role lost MANAGE_CAP aren't locked out).
+     * Any other capability is applied strictly, without that shortcut.
+     *
+     * A method rather than a class constant on purpose: a constant
+     * referencing WC_PLZ_Updater::MANAGE_UPDATE_CAP would be resolved when
+     * WC_PLZ_Filter is instantiated at plugin load - before
+     * class-wc-plz-updater.php is required - and fatal. This is only
+     * called on admin_init, after init() has loaded every module class.
+     */
+    private static function settings_group_caps(): array {
+        return [
+            'wc_plz_filter_group'           => self::MANAGE_CAP,
+            'wc_plz_widgets_group'          => self::MANAGE_CAP, // Merkliste + Cart-Indicator
+            'wc_plz_reminder_group'         => self::MANAGE_CAP,
+            'woohoo_product_overview_group' => self::MANAGE_CAP,
+            // Strict: admins + explicitly granted users only, no manage_options shortcut.
+            'wc_plz_updater_group'          => WC_PLZ_Updater::MANAGE_UPDATE_CAP,
+        ];
+    }
+
+    /**
+     * Applies settings_group_caps(). Hooked on admin_init, which runs on
+     * every wp-admin request - including the options.php POST that saves a
+     * settings form - before options.php reads the filter.
+     */
+    public function register_settings_capabilities(): void {
+        foreach ( self::settings_group_caps() as $group => $cap ) {
+            add_filter( "option_page_capability_{$group}", static function () use ( $cap ) {
+                if ( $cap === self::MANAGE_CAP && current_user_can( 'manage_options' ) ) {
+                    return 'manage_options';
+                }
+                return $cap;
+            } );
+        }
     }
 
     public function sanitize_settings( array $input ): array {

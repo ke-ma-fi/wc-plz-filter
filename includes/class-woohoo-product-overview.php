@@ -92,8 +92,8 @@ final class Woohoo_Product_Overview {
      * Its own settings group + form on the Zusatz-Features tab (same
      * pattern as WC_PLZ_Reminder::register_settings()), not sharing
      * wc_plz_widgets_group with Merkliste/Cart-Indicator - keeps its
-     * capability filter and array-option sanitize callback isolated from
-     * the simpler boolean toggles living there.
+     * array-option sanitize callback isolated from the simpler boolean
+     * toggles living there. Listed in WC_PLZ_Filter::settings_group_caps().
      */
     const SETTINGS_GROUP = 'woohoo_product_overview_group';
 
@@ -117,28 +117,14 @@ final class Woohoo_Product_Overview {
     private static bool $settings_registered = false;
 
     /**
-     * The shop_manager role has MANAGE_CAP but not manage_options by
-     * default, so this group needs its own option_page_capability_* filter
-     * or options.php would require manage_options (administrators only) to
-     * save it - even though the tab itself is already gated by MANAGE_CAP.
-     *
-     * Deliberately OR'd rather than hard-set to MANAGE_CAP: forcing it to
-     * MANAGE_CAP unconditionally would silently break saving for *any*
-     * account that (for whatever reason - e.g. the activation hook that
-     * grants MANAGE_CAP never re-ran) doesn't actually hold that capability,
-     * even a full administrator. Checking manage_options first preserves the
-     * pre-existing behavior for admins and only relaxes it for MANAGE_CAP
-     * holders that lack manage_options (shop_manager), per instruction.
+     * Save capability for SETTINGS_GROUP (manage_options OR MANAGE_CAP)
+     * lives in the central registry WC_PLZ_Filter::settings_group_caps().
      */
     public function register_settings(): void {
         if ( self::$settings_registered ) {
             return;
         }
         self::$settings_registered = true;
-
-        add_filter( 'option_page_capability_' . self::SETTINGS_GROUP, function () {
-            return current_user_can( 'manage_options' ) ? 'manage_options' : WC_PLZ_Filter::MANAGE_CAP;
-        } );
 
         register_setting( self::SETTINGS_GROUP, self::OPTION_ENABLED, [
             'type'              => 'boolean',

@@ -76,12 +76,12 @@ final class WC_PLZ_Reminder {
     }
 
     public function register_settings(): void {
+        // Save capability for this group: see WC_PLZ_Filter::settings_group_caps().
         register_setting(
             'wc_plz_reminder_group',
             self::OPT,
             [ 'sanitize_callback' => [ $this, 'sanitize_settings' ] ]
         );
-        add_filter( 'option_page_capability_wc_plz_reminder_group', fn() => WC_PLZ_Filter::MANAGE_CAP );
     }
 
     public function sanitize_settings( array $input ): array {
