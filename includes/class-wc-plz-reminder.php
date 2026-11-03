@@ -672,9 +672,18 @@ final class WC_PLZ_Reminder {
                             $mode_label   = $entry['mode'] === 'dev'
                                 ? '<span style="color:#646970;">Dev</span>'
                                 : 'Live';
-                            $order_link   = $entry['order_id']
-                                ? '<a href="' . esc_url( admin_url( 'post.php?post=' . (int) $entry['order_id'] . '&action=edit' ) ) . '">#' . (int) $entry['order_id'] . '</a>'
-                                : '—';
+                            // get_edit_order_url() instead of post.php?post=…: with HPOS
+                            // enabled, orders are edited under admin.php?page=wc-orders.
+                            // Deleted orders (wc_get_order() === false) show the bare ID.
+                            $log_order_id = (int) ( $entry['order_id'] ?? 0 );
+                            $log_order    = $log_order_id ? wc_get_order( $log_order_id ) : false;
+                            if ( $log_order instanceof WC_Order ) {
+                                $order_link = '<a href="' . esc_url( $log_order->get_edit_order_url() ) . '">#' . $log_order_id . '</a>';
+                            } elseif ( $log_order_id ) {
+                                $order_link = '#' . $log_order_id;
+                            } else {
+                                $order_link = '—';
+                            }
                             ?>
                             <tr>
                                 <td><?php echo esc_html( $entry['ts'] ?? '—' ); ?></td>
