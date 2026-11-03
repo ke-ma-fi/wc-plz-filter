@@ -6,14 +6,14 @@ Relevant source: [`includes/class-wc-plz-stats.php`](../includes/class-wc-plz-st
 
 ## Data model
 
-Each confirmed popup selection is logged as one row in a dedicated table, `{$wpdb->prefix}wc_plz_events`:
+Every saved delivery-mode choice (`wc_plz_save` AJAX call: a popup choice, including "Überspringen"/dismiss as `skipped`, and a postcode change in the checkout form while a mode is set) is logged as one row in a dedicated table, `{$wpdb->prefix}wc_plz_events`:
 
 | Column | Type | Notes |
 |--------|------|-------|
 | `id` | `BIGINT UNSIGNED AUTO_INCREMENT` | Primary key |
 | `plz` | `VARCHAR(10)` | Postal code; empty for modes without one (`abholung`, `skipped`) |
 | `mode` | `VARCHAR(20)` | `local`, `post`, `abholung`, or `skipped` |
-| `created` | `DATETIME` | Server time of the event |
+| `created` | `DATETIME` | Site-local time of the event (`current_time( 'mysql' )`) |
 
 Indexed on `created` (for range queries/cleanup) and `(mode, plz)` (for aggregation).
 
@@ -25,14 +25,14 @@ Indexed on `created` (for range queries/cleanup) and `(mode, plz)` (for aggregat
 
 ## Retention & cleanup
 
-A daily WP-Cron event (`wc_plz_stats_cleanup`, registered on activation) runs `run_cleanup()`, which enforces two independent limits (configurable in the admin dashboard, stored in the `wc_plz_stats_cleanup` option):
+A daily WP-Cron event (`wc_plz_stats_cleanup`, scheduled by `WC_PLZ_Filter::install()` — on activation and once per plugin version after an update) runs `run_cleanup()`, which enforces two independent limits (configurable in the admin dashboard, stored in the `wc_plz_stats_cleanup` option):
 
-- **TTL** (default: 180 days) — rows older than this are deleted outright.
-- **Max rows** (default: 100,000) — if the table still exceeds this after the TTL pass, the oldest remaining rows are deleted until it doesn't.
+- **TTL** (default: 180 days, minimum 1) — rows older than this are deleted outright.
+- **Max rows** (default: 100,000, minimum 100) — if the table still exceeds this after the TTL pass, the oldest remaining rows are deleted until it doesn't.
 
 ## Admin dashboard
 
-The **Statistik** tab under **WooCommerce → DT Woohoo** shows an aggregated table (PLZ · Zone/Mode · Selections · Last seen), a date-range filter, the retention settings above, and a one-click "Alle Statistiken löschen" reset (nonce-protected, requires `MANAGE_CAP`).
+The **Statistik** tab under **WooCommerce → DT Woohoo** shows an aggregated table (PLZ · Zone/Mode · Selections · Last seen), a date-range filter, the retention settings above, and a one-click "Alle Statistiken löschen" reset (nonce-protected, requires `MANAGE_CAP`). The same tab also shows the Merkliste usage counters (see [widgets.md](widgets.md#usage-counters-temporary)), which are stored separately and have their own reset button.
 
 ## REST API
 
@@ -50,21 +50,25 @@ curl -u ck_xxx:cs_xxx \
   "https://yourshop.de/wp-json/wc-plz/v1/stats?from=2026-04-01"
 ```
 
-`from` / `to` are optional and must be `YYYY-MM-DD`; an invalid value is silently treated as empty (no filter) rather than erroring.
+`from` / `to` are optional and must be `YYYY-MM-DD` (inclusive, whole days); an invalid value is rejected with `400 rest_invalid_param`. (The admin dashboard's date filter, by contrast, silently ignores an invalid value.)
+
+WooCommerce API keys work here because WooCommerce applies its key authentication to every REST route whose namespace starts with `wc-` — `wc-plz/v1` qualifies. Results are cached for up to 5 minutes (see [Caching](#caching)).
 
 **Response:**
 
 ```json
 {
   "period": { "from": "2026-04-01", "to": "" },
-  "total_events": 65,
+  "total_events": 412,
   "data": [
-    { "plz": "63667", "mode": "local",    "count": 42, "last_seen": "2026-04-26T14:23:00" },
-    { "plz": "60313", "mode": "post",     "count": 15, "last_seen": "2026-04-25T09:11:00" },
-    { "plz": "",      "mode": "abholung", "count":  8, "last_seen": "2026-04-26T10:05:00" },
-    { "plz": "",      "mode": "skipped",  "count":  3, "last_seen": "2026-04-25T17:44:00" }
+    { "plz": "63667", "mode": "local",    "count": 42, "last_seen": "2026-04-26 14:23:00" },
+    { "plz": "60313", "mode": "post",     "count": 15, "last_seen": "2026-04-25 09:11:00" },
+    { "plz": "",      "mode": "abholung", "count":  8, "last_seen": "2026-04-26 10:05:00" },
+    { "plz": "",      "mode": "skipped",  "count":  3, "last_seen": "2026-04-25 17:44:00" }
   ]
 }
 ```
 
-`data` is one row per distinct `(plz, mode)` combination within the requested period, sorted by `count` descending.
+`data` is one row per distinct `(plz, mode)` combination within the requested period, sorted by `count` descending; `last_seen` is the site-local `DATETIME` of the latest event in that group.
+
+`total_events` is the number of rows in the whole table, **not** limited to the requested period — sum the `count` values for the period total.

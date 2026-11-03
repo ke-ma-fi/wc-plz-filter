@@ -44,7 +44,7 @@ GET /wp-json/woohoo/v1/product-overview
 | `date` | only if `mode=local` | `YYYY-MM-DD` | Matched against the `_willii_delivery_date` order meta. |
 | `exclude_postcodes` | no | comma-separated string | Orders whose shipping postcode exactly matches one of these are dropped. Non-digit characters are stripped from each entry before matching. |
 
-Only orders in WooCommerce status `processing` with no completion date are included in either mode.
+Only orders in WooCommerce status `processing` with no completion date are included in either mode. Refunds are netted out per line item (ordered quantity minus refunded quantity); a fully refunded line is left out.
 
 ### Authentication
 
@@ -70,7 +70,8 @@ The response always sends `Cache-Control: no-store, max-age=0` — it is never b
     {
       "name": "Bio-Rinderhack 500g",     // product (parent) name
       "sku": "RIND-500",                 // product SKU, "" if unset
-      "total_label": "3,5 kg gesamt",    // pre-formatted total across all matched orders
+      "total_label": "3,5 kg",           // pre-formatted total across all matched orders,
+                                         // e.g. "3,5 kg + 4 Stück" for mixed units
       "orders": [
         {
           "customer_name": "Erika Musterfrau",
@@ -86,9 +87,12 @@ The response always sends `Cache-Control: no-store, max-age=0` — it is never b
 
 Notes on the shape:
 
-- `groups` is sorted descending by total quantity (heaviest/most-ordered product first).
-- Every row within a group's `orders` array is already de-duplicated/merged: multiple line items across different orders collapse into one row when customer name, variant, shipping method, and per-unit weight all match.
-- All numeric aggregation and unit conversion (kg/g/l/ml/cl/mg, "Xer"/"X Paar" pack sizes) happens server-side. Clients only ever receive the two pre-formatted display strings (`total_label`, `qty_label`) — there is no raw numeric quantity field to re-derive.
+- Units: each line is counted in one of three dimensions — mass (`g`, shown as kg from 1000 g), volume (`ml`, shown as l from 1000 ml) or pieces (`Stück`). The weight is read from the line's `pa_gewicht` / "Gewicht" item meta; recognised formats include `500 g`, `500gr`, `500 Gramm`, `1,5 kg`, `1.5 kg`, `1 Kilo`, `1 Liter`, `0,25 l`, `cl`/`mg`, and `1.000 g` (a dot followed by exactly three digits is a thousands separator). Lines without a parseable weight count as pieces, multiplied by a pack size taken from the product name (`6er`, `2 Paar`).
+- A product whose lines come in different dimensions keeps one subtotal per dimension, joined with ` + ` in `total_label` (order: mass, volume, pieces) — grams are never added to pieces.
+- Quantities may be decimal (e.g. `0,5 × 1 kg = 500 g`); numbers use a German decimal comma, up to three decimals.
+- `groups` is sorted by weighed quantity (mass + volume, treating g ≈ ml) descending, heaviest first; the piece count only breaks ties, so piece-only products come after all weighed products, ordered by piece count.
+- Every row within a group's `orders` array is already de-duplicated/merged: multiple line items across different orders collapse into one row only when customer name, variant, shipping method, unit dimension, per-unit weight and pack size all match.
+- All numeric aggregation and unit conversion happens server-side. Clients only ever receive the two pre-formatted display strings (`total_label`, `qty_label`) — there is no raw numeric quantity field to re-derive. The bundled page appends " gesamt" to `total_label` itself.
 - Every string field is caller-controlled data (customer names, product names) that has **not** been HTML-escaped — it is plain text meant for `textContent`/JSON consumption, not for `innerHTML` concatenation. This is deliberate (see the aggregator's class docblock): the original n8n version built HTML strings directly and was vulnerable to stored XSS via order billing names. Any renderer for this endpoint's data must treat every string as untrusted text, not markup.
 
 ### Error responses
@@ -106,7 +110,7 @@ All errors are standard `WP_Error`-shaped REST responses:
 | 401 | `woohoo_po_unauthorized` | Feature enabled, but no valid auth (cookie or capability) |
 | 403 | `woohoo_po_bad_nonce` | Cookie-auth path taken, but `X-WP-Nonce` missing/invalid |
 | 404 | `woohoo_po_disabled` | Feature toggle is off and the caller isn't `MANAGE_CAP` |
-| 500 | `woohoo_po_query_failed` | Exception during aggregation; `message` includes the underlying exception message for diagnosis from the browser network tab alone |
+| 500 | `woohoo_po_query_failed` | Exception during aggregation. The client only gets a generic message ("Fehler beim Abrufen der Übersicht. Bitte später erneut versuchen."); the exception message is written to the PHP error log (`Woohoo Produktübersicht query failed: …`) |
 
 ### Minimal client example
 
