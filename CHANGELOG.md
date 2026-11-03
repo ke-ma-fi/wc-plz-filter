@@ -32,16 +32,18 @@ Deploy-safety and hardening release following the October 2026 review
   `version`; `bin/check-version.sh` for the same check locally. (#21)
 - `docs/RUNBOOK.md` (German): deploy flow, GitHub ruleset, release checklist,
   rollback, fatal-error emergency, webhook secret rotation, update lock. (#21)
-- Install/upgrade routine `WC_PLZ_Filter::install()`, run on activation and
-  once per plugin version via `maybe_upgrade()` (option
-  `wc_plz_upgraded_version`): stats table, cron events, capabilities. Webhook
-  updates never fire the activation hook, so this is how setup changes reach
-  production. (#20)
+- Install/upgrade routines. `WC_PLZ_Filter::install()` runs on activation
+  (stats table, cron events, capabilities). Webhook updates never fire the
+  activation hook, so `maybe_upgrade()` runs the more conservative
+  `upgrade()` once per plugin version (option `wc_plz_upgraded_version`):
+  `dbDelta()` only on a schema-version change, stats cleanup cron ensured,
+  a stray reminder cron removed in dev mode. It never schedules the
+  payment-reminder cron and never touches role capabilities. (#20, review fixes)
 - HPOS compatibility declaration (`custom_order_tables`). The shop still uses
   posts storage; cart/checkout blocks are deliberately not declared. (#20)
 - Mail-Log: failure reason from `wp_mail_failed`, status
   `invalid_recipient` for empty/invalid addresses, 90-day retention. (#20)
-- `CHANGELOG.md`, `CLAUDE.md` and an updated `docs/ROADMAP.md`. (Doku-PR)
+- `CHANGELOG.md`, `CLAUDE.md` and `docs/ROADMAP.md`. (#22)
 
 ### Changed
 
@@ -49,7 +51,10 @@ Deploy-safety and hardening release following the October 2026 review
   `locked`, manual update shows a notice; a stale lock expires after
   10 minutes), the upgrade continues if the client disconnects, and a
   webhook delivery whose `X-GitHub-Delivery` ID already succeeded is skipped.
-  New options `wc_plz_updater_lock`, `wc_plz_updater_deliveries`. (#21)
+  A webhook rejected with 409 schedules a one-off retry via WP-Cron
+  (`wc_plz_updater_retry`, ~1 minute later, rescheduled while the lock is
+  held), so a push that arrives during a running update is not lost.
+  New options `wc_plz_updater_lock`, `wc_plz_updater_deliveries`. (#21, review fixes)
 - Settings save capabilities are defined in one registry,
   `WC_PLZ_Filter::settings_group_caps()`, instead of one filter per module. (#17)
 - Plugin header: `Requires at least: 6.0`, new description. (#20)
@@ -74,20 +79,21 @@ Deploy-safety and hardening release following the October 2026 review
   for the very first time (`add_option` hook), and a cron run while dev mode
   is on aborts and unschedules itself instead of mailing real customers. (#20)
 - Packliste: refunded quantities are netted out; more weight formats are
-  recognised (`gr`, `Gramm`, `Kilo`, `Liter`, `1.000 g` thousands separator);
-  decimal quantities are no longer truncated. (#18)
+  recognised (`gr`, `Gramm`, `Kilo`, `Liter`, `1.000 g` thousands separator
+  for g/mg/ml/cl; with kg/l a dot stays a decimal point, so `0.500 kg` is
+  500 g); decimal quantities are no longer truncated. (#18, review fixes)
 - PLZ popup: Escape only acts while the popup is open (no more accidental
   "Kein Filter" from closing another overlay); the `:has()` hiding rule is
   separate so older browsers keep the ID rule; pasted postcodes like
   "63 667" are normalised instead of cut off by `maxlength`; double submits
   are blocked; the nonce refresh times out after 10 s. (#19)
 - Documentation brought in line with the code (cookie lifetime, zone cache,
-  popup trigger, Merkliste counters, uninstall, deploy). (Doku-PR)
+  popup trigger, Merkliste counters, uninstall, deploy). (#22)
 
 ### Removed
 
 - Stale `docs/demos/`, `docs/notes/badge-toast.md`, `docs/notes/to-dos.md`
-  (open points moved to the roadmap). (Doku-PR)
+  (open points moved to the roadmap). (#22)
 
 ## Earlier versions
 

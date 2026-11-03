@@ -261,30 +261,41 @@ final class Woohoo_PO_Aggregator {
      * Parses the first "<number> <unit>" in a weight string, e.g. "500 g",
      * "500gr", "500 Gramm", "1,5 kg", "1.5 kg", "1 Liter", "0,25 l".
      *
-     * Number formats: "1,5" and "1.5" are decimals; a dot followed by
-     * exactly three digits (and no further digit) is a German thousands
-     * separator, so "1.000 g" is 1000 g, and "1.000,5 g" is 1000.5 g.
+     * Number formats: "1,5" and "1.5" are decimals. A dot followed by
+     * exactly three digits is read as a German thousands separator only where
+     * that is the plausible meaning: with small units (g/mg/ml/cl) and a
+     * leading group other than "0" ("1.000 g" = 1000 g), or when a decimal
+     * comma follows ("1.000,5 g"). With kg/l it stays a decimal point
+     * ("0.500 kg" = 500 g, "1.250 kg" = 1,25 kg).
      */
     private static function parse_weight( ?string $str ): ?array {
         if ( $str === null || $str === '' ) {
             return null;
         }
+        // /u + letter lookahead instead of \b: without it "2 Grüne …" matched
+        // "Gr" as grams, because \b sees the multibyte "ü" as a non-word byte.
         $pattern = '/(?<!\d)(?<!\d[.,])(\d{1,3}(?:\.\d{3})+(?:,\d+)?(?!\d)|\d+(?:[.,]\d+)?)\s*'
-            . '(kilogramm|kilo|kg|milligramm|mg|gramm|gr|g|milliliter|ml|centiliter|zentiliter|cl|liter|litre|ltr|l)\b/i';
+            . '(kilogramm|kilo|kg|milligramm|mg|gramm|gr|g|milliliter|ml|centiliter|zentiliter|cl|liter|litre|ltr|l)(?![\p{L}\d])/iu';
         if ( ! preg_match( $pattern, $str, $m ) ) {
             return null;
         }
 
-        $number = $m[1];
-        if ( preg_match( '/^\d{1,3}(?:\.\d{3})+(?:,\d+)?$/', $number ) ) {
-            $number = str_replace( '.', '', $number );
-        }
-        $val  = (float) str_replace( ',', '.', $number );
         $unit = strtolower( $m[2] );
         $unit = self::UNIT_ALIASES[ $unit ] ?? $unit;
         if ( ! isset( self::UNIT_CONVERSIONS[ $unit ] ) ) {
             return null;
         }
+
+        $number = $m[1];
+        if ( preg_match( '/^\d{1,3}(?:\.\d{3})+(?:,\d+)?$/', $number ) ) {
+            $has_comma    = strpos( $number, ',' ) !== false;
+            $small_unit   = in_array( $unit, [ 'g', 'mg', 'ml', 'cl' ], true );
+            $leading_zero = strpos( $number, '0.' ) === 0;
+            if ( $has_comma || ( $small_unit && ! $leading_zero ) ) {
+                $number = str_replace( '.', '', $number );
+            }
+        }
+        $val = (float) str_replace( ',', '.', $number );
 
         [ $factor, $target_unit ] = self::UNIT_CONVERSIONS[ $unit ];
         return [ 'val' => $val * $factor, 'unit' => $target_unit ];

@@ -12,9 +12,12 @@ Overview: [README.md](README.md). Planned work: [docs/ROADMAP.md](docs/ROADMAP.m
 - **Every push to `main` is a production deploy:** a GitHub push webhook makes the
   plugin download the branch archive and install it over itself. A fatal error takes
   the shop *and* the webhook down — recovery then needs the operator ([docs/RUNBOOK.md](docs/RUNBOOK.md)).
-- The activation hook never runs on webhook updates. Setup work (tables, crons, caps)
-  goes into `WC_PLZ_Filter::install()` (idempotent), which `maybe_upgrade()` runs once
-  per `VERSION`.
+- The activation hook never runs on webhook updates. Activation runs
+  `WC_PLZ_Filter::install()`; updates run the conservative `WC_PLZ_Filter::upgrade()`
+  once per `VERSION` (via `maybe_upgrade()`), unattended on a live request. Put setup
+  needed after an update there — but never anything that starts customer-facing side
+  effects (e.g. scheduling the payment-reminder cron) or overrides operator decisions
+  (role caps).
 
 ## Branches & releases
 

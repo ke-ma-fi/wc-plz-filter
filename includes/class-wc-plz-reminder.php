@@ -44,8 +44,8 @@ final class WC_PLZ_Reminder {
 
     /**
      * Brings the cron in line with the settings: scheduled in live mode, not
-     * scheduled in dev mode. Idempotent; runs on activation and once per
-     * plugin version via WC_PLZ_Filter::install().
+     * scheduled in dev mode. Idempotent; runs on activation via
+     * WC_PLZ_Filter::install() (updates use remove_stray_cron() instead).
      *
      * Dev mode must never keep a stray event: run_scan() called by cron
      * treats every run as live and mails real customers.
@@ -56,6 +56,17 @@ final class WC_PLZ_Reminder {
             // Instanz existiert beim Aktivierungsaufruf evtl. noch nicht → direkt schedulen
             self::schedule_cron_static( max( 1, (int) $settings['cron_interval'] ) );
         } elseif ( wp_next_scheduled( self::CRON_HOOK ) ) {
+            self::unschedule_cron_static();
+        }
+    }
+
+    /**
+     * Upgrade path (WC_PLZ_Filter::upgrade()): only removes a leftover cron
+     * in dev mode, never schedules one - see the docblock there.
+     */
+    public static function remove_stray_cron(): void {
+        $settings = wp_parse_args( get_option( self::OPT, [] ), self::defaults() );
+        if ( ! empty( $settings['dev_mode'] ) && wp_next_scheduled( self::CRON_HOOK ) ) {
             self::unschedule_cron_static();
         }
     }
