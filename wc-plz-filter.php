@@ -3,7 +3,7 @@
  * Plugin Name:  DT Woohoo
  * Plugin URI:   https://fischer.digitale-theke.com
  * Description:  WooCommerce-Erweiterungen der Metzgerei Fischer: PLZ-Popup mit Liefermodus-Produktfilter, PLZ-Statistik, Zahlungs-Erinnerung mit Mail-Log, Merkliste, Warenkorb-Anzeige, Produktübersicht und GitHub-Auto-Updater.
- * Version:      2.12.9
+ * Version:      2.13.0
  * Author:       Metzgerei Fischer
  * License:      Proprietary
  * License URI:  https://fischer.digitale-theke.com
