@@ -34,15 +34,29 @@ final class WC_PLZ_Reminder {
         add_filter( 'cron_schedules', [ $this, 'register_cron_schedule' ] );
         add_action( self::CRON_HOOK, [ $this, 'run_scan' ] );
         add_action( 'update_option_' . self::OPT, [ $this, 'maybe_reschedule_cron' ], 10, 2 );
+        // The very first save creates the option, which fires add_option_*,
+        // not update_option_* - without this, switching to live mode on a fresh
+        // install would not schedule the cron.
+        add_action( 'add_option_' . self::OPT, [ $this, 'on_settings_added' ], 10, 2 );
     }
 
     /* ── Lifecycle ───────────────────────────────── */
 
+    /**
+     * Brings the cron in line with the settings: scheduled in live mode, not
+     * scheduled in dev mode. Idempotent; runs on activation and once per
+     * plugin version via WC_PLZ_Filter::install().
+     *
+     * Dev mode must never keep a stray event: run_scan() called by cron
+     * treats every run as live and mails real customers.
+     */
     public static function activate(): void {
         $settings = wp_parse_args( get_option( self::OPT, [] ), self::defaults() );
         if ( empty( $settings['dev_mode'] ) ) {
-            // Instanz existiert noch nicht beim Aktivierungsaufruf → direkt schedulen
-            self::schedule_cron_static( (int) $settings['cron_interval'] );
+            // Instanz existiert beim Aktivierungsaufruf evtl. noch nicht → direkt schedulen
+            self::schedule_cron_static( max( 1, (int) $settings['cron_interval'] ) );
+        } elseif ( wp_next_scheduled( self::CRON_HOOK ) ) {
+            self::unschedule_cron_static();
         }
     }
 
@@ -123,6 +137,11 @@ final class WC_PLZ_Reminder {
         }
     }
 
+    /** add_option_{option} passes ( $option, $value ) - adapt to maybe_reschedule_cron(). */
+    public function on_settings_added( $option, $value ): void {
+        $this->maybe_reschedule_cron( [], $value );
+    }
+
     /* ── Cron-Schedule (Filter) ──────────────────── */
 
     public function register_cron_schedule( array $schedules ): array {
@@ -172,10 +191,16 @@ final class WC_PLZ_Reminder {
 
     /**
      * Wird direkt vom Cron (ohne Argumente) oder manuell mit $is_dev_run=true aufgerufen.
-     * Im Cron-Aufruf ist $is_dev_run immer false (Dev-Modus hat keinen Cron).
+     * Im Cron-Aufruf ist $is_dev_run immer false; ein Cron-Lauf im Dev-Modus bricht ab.
      */
     public function run_scan( bool $is_dev_run = false ): array {
         if ( ! $is_dev_run ) {
+            // Cron-Lauf im Dev-Modus = verwaistes Event. Ohne diesen Guard würde
+            // es als Live-Lauf echte Kunden anschreiben → Event entfernen, abbrechen.
+            if ( ! empty( $this->get_settings()['dev_mode'] ) ) {
+                self::unschedule_cron_static();
+                return [ 'skipped' => true, 'reason' => 'dev_mode' ];
+            }
             if ( get_transient( self::LOCK_KEY ) ) {
                 return [ 'skipped' => true, 'reason' => 'locked' ];
             }
@@ -653,9 +678,18 @@ final class WC_PLZ_Reminder {
                             $mode_label   = $entry['mode'] === 'dev'
                                 ? '<span style="color:#646970;">Dev</span>'
                                 : 'Live';
-                            $order_link   = $entry['order_id']
-                                ? '<a href="' . esc_url( admin_url( 'post.php?post=' . (int) $entry['order_id'] . '&action=edit' ) ) . '">#' . (int) $entry['order_id'] . '</a>'
-                                : '—';
+                            // get_edit_order_url() instead of post.php?post=…: with HPOS
+                            // enabled, orders are edited under admin.php?page=wc-orders.
+                            // Deleted orders (wc_get_order() === false) show the bare ID.
+                            $log_order_id = (int) ( $entry['order_id'] ?? 0 );
+                            $log_order    = $log_order_id ? wc_get_order( $log_order_id ) : false;
+                            if ( $log_order instanceof WC_Order ) {
+                                $order_link = '<a href="' . esc_url( $log_order->get_edit_order_url() ) . '">#' . $log_order_id . '</a>';
+                            } elseif ( $log_order_id ) {
+                                $order_link = '#' . $log_order_id;
+                            } else {
+                                $order_link = '—';
+                            }
                             ?>
                             <tr>
                                 <td><?php echo esc_html( $entry['ts'] ?? '—' ); ?></td>

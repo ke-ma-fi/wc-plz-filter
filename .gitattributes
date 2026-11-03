@@ -1,0 +1,11 @@
+# Paths excluded from `git archive` and therefore from the GitHub branch
+# archive (zip) that the self-updater installs into wp-content/plugins/.
+# Development-only and internal files must not be published on the live
+# site. README.md and CHANGELOG.md stay in the package on purpose.
+/docs/          export-ignore
+/.github/       export-ignore
+/bin/           export-ignore
+/tests/         export-ignore
+/CLAUDE.md      export-ignore
+/.gitattributes export-ignore
+/.gitignore     export-ignore
