@@ -1,0 +1,80 @@
+# Pflicht-Checks für main/base. Job-Namen nicht umbenennen: sie sind im
+# GitHub-Ruleset als "required status checks" eingetragen (siehe docs/RUNBOOK.md).
+name: CI
+
+on:
+  pull_request:
+    branches: [ main, base ]
+  push:
+    branches: [ main, base ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  php-lint:
+    name: php-lint (PHP ${{ matrix.php }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: [ '8.0', '8.1', '8.2', '8.3' ]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+          tools: none
+      - name: php -l on all tracked PHP files
+        run: |
+          status=0
+          count=0
+          while IFS= read -r -d '' f; do
+            count=$((count + 1))
+            if ! out="$(php -l "$f" 2>&1)"; then
+              echo "::error file=$f::$out"
+              echo "$out"
+              status=1
+            fi
+          done < <(git ls-files -z -- '*.php')
+          echo "Checked $count PHP files with $(php -r 'echo PHP_VERSION;')."
+          exit $status
+
+  js-check:
+    name: js-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - name: node --check on assets/js/*.js
+        run: |
+          status=0
+          for f in assets/js/*.js; do
+            node --check "$f" || status=1
+          done
+          exit $status
+
+  version:
+    name: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+          tools: none
+      - name: Fetch main for comparison
+        if: github.event_name == 'pull_request' && github.base_ref == 'main'
+        run: git fetch --no-tags --depth=1 origin +refs/heads/main:refs/remotes/origin/main
+      - name: Check version
+        env:
+          COMPARE_REF: ${{ (github.event_name == 'pull_request' && github.base_ref == 'main') && 'origin/main' || '' }}
+        run: bin/check-version.sh "$COMPARE_REF"

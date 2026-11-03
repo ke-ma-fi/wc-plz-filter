@@ -16,8 +16,15 @@ final class WC_PLZ_Updater {
     const OPT_SECRET = 'wc_plz_updater_secret';
     const OPT_LOG    = 'wc_plz_updater_log';
     const OPT_CAP_VERSION = 'wc_plz_updater_cap_version';
+    const OPT_LOCK       = 'wc_plz_updater_lock';
+    const OPT_DELIVERIES = 'wc_plz_updater_deliveries';
 
     const MANAGE_UPDATE_CAP = 'manage_woohoo_updates';
+
+    // Sperre gilt als verwaist (abgestürzter Lauf), wenn älter als 10 Minuten.
+    const LOCK_TTL = 600;
+    // Wie viele X-GitHub-Delivery-IDs gegen Doppel-Zustellung gemerkt werden.
+    const MAX_DELIVERIES = 20;
 
     private string $upgrade_branch = 'main';
 
@@ -81,6 +88,85 @@ final class WC_PLZ_Updater {
         update_option( self::OPT_LOG, array_slice( $log, 0, 10 ) );
     }
 
+    // ── Upgrade lock ──────────────────────────────────────────────────────
+    //
+    // Direkt per SQL statt add_option(): add_option() prüft erst und schreibt
+    // dann (INSERT … ON DUPLICATE KEY UPDATE), zwei parallele Requests
+    // könnten so beide „gewinnen“. INSERT IGNORE ist atomar (gleiches Muster
+    // wie WP_Upgrader::create_lock()) und umgeht den Options-Cache.
+
+    /**
+     * Returns the lock token (unix time) on success, 0 if another run holds it.
+     */
+    private function acquire_lock(): int {
+        global $wpdb;
+
+        $now = time();
+        $inserted = $wpdb->query( $wpdb->prepare(
+            "INSERT IGNORE INTO {$wpdb->options} ( option_name, option_value, autoload ) VALUES ( %s, %s, 'no' )",
+            self::OPT_LOCK,
+            (string) $now
+        ) );
+        if ( $inserted ) {
+            return $now;
+        }
+
+        $since = $this->get_lock_time();
+        if ( $since === 0 || $since > $now - self::LOCK_TTL ) {
+            return 0;
+        }
+
+        // Verwaiste Sperre: nur genau diesen alten Wert löschen, damit zwei
+        // gleichzeitige Übernahmen sich nicht gegenseitig die Sperre klauen.
+        $wpdb->query( $wpdb->prepare(
+            "DELETE FROM {$wpdb->options} WHERE option_name = %s AND option_value = %s",
+            self::OPT_LOCK,
+            (string) $since
+        ) );
+        $inserted = $wpdb->query( $wpdb->prepare(
+            "INSERT IGNORE INTO {$wpdb->options} ( option_name, option_value, autoload ) VALUES ( %s, %s, 'no' )",
+            self::OPT_LOCK,
+            (string) $now
+        ) );
+
+        return $inserted ? $now : 0;
+    }
+
+    private function release_lock( int $token ): void {
+        global $wpdb;
+
+        // Nur die eigene Sperre freigeben (falls sie nach Ablauf übernommen wurde).
+        $wpdb->query( $wpdb->prepare(
+            "DELETE FROM {$wpdb->options} WHERE option_name = %s AND option_value = %s",
+            self::OPT_LOCK,
+            (string) $token
+        ) );
+    }
+
+    private function get_lock_time(): int {
+        global $wpdb;
+
+        return (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT option_value FROM {$wpdb->options} WHERE option_name = %s",
+            self::OPT_LOCK
+        ) );
+    }
+
+    // ── Webhook delivery IDs (Schutz vor Doppel-Zustellung) ───────────────
+
+    private function get_deliveries(): array {
+        return (array) get_option( self::OPT_DELIVERIES, [] );
+    }
+
+    private function remember_delivery( string $delivery ): void {
+        if ( $delivery === '' ) {
+            return;
+        }
+        $ids = $this->get_deliveries();
+        array_unshift( $ids, $delivery );
+        update_option( self::OPT_DELIVERIES, array_slice( array_values( array_unique( $ids ) ), 0, self::MAX_DELIVERIES ), false );
+    }
+
     // ── REST endpoint ─────────────────────────────────────────────────────
 
     public function register_rest_routes(): void {
@@ -104,13 +190,30 @@ final class WC_PLZ_Updater {
             return new WP_REST_Response( [ 'error' => 'invalid_signature' ], 403 );
         }
 
+        // Erst nach geprüfter Signatur: dieselbe Zustellung nicht zweimal ausführen.
+        $delivery = substr( preg_replace( '/[^A-Za-z0-9\-]/', '', (string) $request->get_header( 'x_github_delivery' ) ), 0, 64 );
+        if ( $delivery !== '' && in_array( $delivery, $this->get_deliveries(), true ) ) {
+            return new WP_REST_Response( [ 'skipped' => 'duplicate' ], 200 );
+        }
+
         $payload = $request->get_json_params();
 
         if ( ( $payload['ref'] ?? '' ) !== 'refs/heads/' . $this->get_branch() ) {
+            $this->remember_delivery( $delivery );
             return new WP_REST_Response( [ 'skipped' => true ], 200 );
         }
 
         $result = $this->run_upgrade();
+
+        if ( ! empty( $result['locked'] ) ) {
+            return new WP_REST_Response( [ 'error' => 'locked' ], 409 );
+        }
+
+        // Nur erfolgreiche Läufe merken, damit „Redeliver“ auf GitHub
+        // (gleiche Delivery-ID) einen fehlgeschlagenen Lauf wiederholen kann.
+        if ( $result['success'] ) {
+            $this->remember_delivery( $delivery );
+        }
 
         return new WP_REST_Response(
             [ 'updated' => $result['success'], 'message' => $result['message'] ],
@@ -127,38 +230,70 @@ final class WC_PLZ_Updater {
         require_once ABSPATH . 'wp-admin/includes/class-wp-filesystem-direct.php';
         require_once ABSPATH . 'wp-admin/includes/plugin.php';
 
-        WP_Filesystem();
+        $old_version = WC_PLZ_Filter::VERSION;
 
-        $old_version          = WC_PLZ_Filter::VERSION;
-        $this->upgrade_branch = $this->get_branch();
-        $zip_url              = 'https://github.com/' . $this->get_repo() . '/archive/refs/heads/' . $this->upgrade_branch . '.zip';
+        // Nie zwei Updates gleichzeitig (Webhook + „Jetzt aktualisieren“,
+        // doppelte Zustellung): zwei Plugin_Upgrader im selben Ordner = kaputtes Plugin.
+        $lock = $this->acquire_lock();
+        if ( $lock === 0 ) {
+            $message = sprintf(
+                'Skipped: another update is already running (locked since %s).',
+                wp_date( 'Y-m-d H:i:s', $this->get_lock_time() ?: time() )
+            );
+            $this->save_log( [
+                'time'        => current_time( 'mysql' ),
+                'old_version' => $old_version,
+                'new_version' => $old_version,
+                'status'      => 'locked',
+                'message'     => $message,
+            ] );
+            return [ 'success' => false, 'locked' => true, 'message' => $message ];
+        }
 
-        add_filter( 'upgrader_source_selection', [ $this, 'fix_source_dir' ], 10, 4 );
+        try {
+            // Abbruch durch Client (GitHub-Timeout nach 10 s, Browser geschlossen)
+            // darf das Update nicht mittendrin stoppen.
+            if ( function_exists( 'ignore_user_abort' ) ) {
+                ignore_user_abort( true );
+            }
+            if ( function_exists( 'set_time_limit' ) ) {
+                @set_time_limit( 300 );
+            }
 
-        $skin     = new WP_Ajax_Upgrader_Skin();
-        $upgrader = new Plugin_Upgrader( $skin );
-        $result   = $upgrader->install( $zip_url, [ 'overwrite_package' => true ] );
+            WP_Filesystem();
 
-        remove_filter( 'upgrader_source_selection', [ $this, 'fix_source_dir' ], 10 );
+            $this->upgrade_branch = $this->get_branch();
+            $zip_url              = 'https://github.com/' . $this->get_repo() . '/archive/refs/heads/' . $this->upgrade_branch . '.zip';
 
-        $success = ( $result === true );
+            add_filter( 'upgrader_source_selection', [ $this, 'fix_source_dir' ], 10, 4 );
 
-        $plugin_file = WC_PLZ_FILTER_DIR . 'wc-plz-filter.php';
-        $data        = get_plugin_data( $plugin_file, false, false );
-        $new_version = $data['Version'] ?? 'unknown';
-        $message = $success
-            ? sprintf( 'Updated from %s to %s.', $old_version, $new_version )
-            : ( is_wp_error( $result ) ? $result->get_error_message() : 'Unknown upgrade error.' );
+            $skin     = new WP_Ajax_Upgrader_Skin();
+            $upgrader = new Plugin_Upgrader( $skin );
+            $result   = $upgrader->install( $zip_url, [ 'overwrite_package' => true ] );
 
-        $this->save_log( [
-            'time'        => current_time( 'mysql' ),
-            'old_version' => $old_version,
-            'new_version' => $success ? $new_version : $old_version,
-            'status'      => $success ? 'success' : 'error',
-            'message'     => $message,
-        ] );
+            remove_filter( 'upgrader_source_selection', [ $this, 'fix_source_dir' ], 10 );
 
-        return [ 'success' => $success, 'message' => $message ];
+            $success = ( $result === true );
+
+            $plugin_file = WC_PLZ_FILTER_DIR . 'wc-plz-filter.php';
+            $data        = get_plugin_data( $plugin_file, false, false );
+            $new_version = $data['Version'] ?? 'unknown';
+            $message = $success
+                ? sprintf( 'Updated from %s to %s.', $old_version, $new_version )
+                : ( is_wp_error( $result ) ? $result->get_error_message() : 'Unknown upgrade error.' );
+
+            $this->save_log( [
+                'time'        => current_time( 'mysql' ),
+                'old_version' => $old_version,
+                'new_version' => $success ? $new_version : $old_version,
+                'status'      => $success ? 'success' : 'error',
+                'message'     => $message,
+            ] );
+
+            return [ 'success' => $success, 'locked' => false, 'message' => $message ];
+        } finally {
+            $this->release_lock( $lock );
+        }
     }
 
     public function fix_source_dir( string $source, string $remote_source, $upgrader, array $hook_extra ): string {
@@ -198,7 +333,7 @@ final class WC_PLZ_Updater {
         }
 
         $result = $this->run_upgrade();
-        $status = $result['success'] ? 'success' : 'error';
+        $status = $result['success'] ? 'success' : ( ! empty( $result['locked'] ) ? 'error_locked' : 'error' );
 
         wp_safe_redirect( add_query_arg( 'plz_update', $status,
             Woohoo_Admin_Page::tab_url( 'updater' ) ) );
@@ -253,6 +388,8 @@ final class WC_PLZ_Updater {
             echo '<div class="notice notice-error is-dismissible"><p>Update fehlgeschlagen. Siehe Update-Log für Details.</p></div>';
         } elseif ( $status === 'error_not_configured' ) {
             echo '<div class="notice notice-warning is-dismissible"><p>Update fehlgeschlagen: GitHub-Repo nicht konfiguriert.</p></div>';
+        } elseif ( $status === 'error_locked' ) {
+            echo '<div class="notice notice-warning is-dismissible"><p>Update übersprungen: Es läuft bereits ein Update. Bitte in ein paar Minuten erneut versuchen (eine hängende Sperre verfällt nach 10 Minuten).</p></div>';
         }
 
         $grant_status = sanitize_key( $_GET['plz_grant'] ?? '' );
@@ -432,9 +569,13 @@ final class WC_PLZ_Updater {
                         <td><?php echo esc_html( $entry['time'] ); ?></td>
                         <td><code><?php echo esc_html( $entry['old_version'] ); ?></code></td>
                         <td><code><?php echo esc_html( $entry['new_version'] ); ?></code></td>
-                        <td><?php echo $entry['status'] === 'success'
-                            ? '<span style="color:#46b450;">OK</span>'
-                            : '<span style="color:#c00;">Fehler</span>'; ?></td>
+                        <td><?php if ( $entry['status'] === 'success' ) {
+                            echo '<span style="color:#46b450;">OK</span>';
+                        } elseif ( $entry['status'] === 'locked' ) {
+                            echo '<span style="color:#dba617;">Gesperrt</span>';
+                        } else {
+                            echo '<span style="color:#c00;">Fehler</span>';
+                        } ?></td>
                         <td><?php echo esc_html( $entry['message'] ); ?></td>
                     </tr>
                 <?php endforeach; ?>
