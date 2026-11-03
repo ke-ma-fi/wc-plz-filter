@@ -53,6 +53,10 @@
     nonceFetchInFlight = [cb];
     var xhr = new XMLHttpRequest();
     xhr.open("GET", D.nonceUrl, true);
+    // Ohne Timeout könnte ein hängender Request die Retry-Callbacks (und damit
+    // das Busy-Flag des Popups) unbegrenzt blockieren. Bei Timeout feuert
+    // readyState 4 mit status 0 → fresh bleibt null → onError der Aufrufer.
+    xhr.timeout = 10000;
     xhr.onreadystatechange = function () {
       if (xhr.readyState !== 4) return;
       var fresh = null;
@@ -183,6 +187,22 @@
   }
 
   /* ── Popup ──────────────────────────────────── */
+
+  // true, solange eine PLZ-Prüfung läuft oder nach Erfolg / Abholung der
+  // Reload aussteht – verhindert doppelte Check-/Save-Requests (und doppelte
+  // Statistik-Zeilen) durch Enter-Wiederholung oder Doppel-Tap.
+  var busy = false;
+
+  // Sichtbar = nicht display:none und nicht gerade am Ausblenden
+  // (fadeOut() setzt opacity sofort auf 0, display:none erst nach der Animation).
+  function isPopupOpen() {
+    var overlay = $("#wc-plz-overlay");
+    if (!overlay) return false;
+    return (
+      window.getComputedStyle(overlay).display !== "none" &&
+      overlay.style.opacity !== "0"
+    );
+  }
 
   function openPopup() {
     var overlay = $("#wc-plz-overlay");
@@ -377,33 +397,36 @@
         slugs = JSON.parse(localStorage.getItem("wc_plz_hidden_slugs") || "[]");
       } catch (e) {}
 
-      var sel = "";
+      // Zwei getrennte Regeln: Browser ohne :has()-Support verwerfen sonst
+      // die komplette Selektorliste – und damit auch die ID-Selektoren.
+      var css = "";
       if (ids.length) {
         // .pdb{ID} = fgf-Custom-Grid; .products .post-{ID} = WC-Standard-Loops
         // (Cross-Sells / Up-Sells / Related / Shop). Niemals body.post-{ID} oder
         // article.post-{ID} matchen, sonst verschwindet die Single-Product-Page.
-        sel = ids
-          .map(function (id) {
-            return ".pdb" + id + ", .products .post-" + id;
-          })
-          .join(",");
+        css +=
+          ids
+            .map(function (id) {
+              return ".pdb" + id + ", .products .post-" + id;
+            })
+            .join(",") + "{display:none!important}";
       }
       if (slugs.length) {
-        var cSel = slugs
-          .map(function (s) {
-            return '.jet-woo-products__inner-box:has(a[href*="/' + s + '/"])';
-          })
-          .join(",");
-        sel = sel ? sel + "," + cSel : cSel;
+        css +=
+          slugs
+            .map(function (s) {
+              return '.jet-woo-products__inner-box:has(a[href*="/' + s + '/"])';
+            })
+            .join(",") + "{display:none!important}";
       }
 
-      if (sel) {
+      if (css) {
         if (!styleEl) {
           styleEl = document.createElement("style");
           styleEl.id = "wc-plz-hide-style";
           (document.head || document.documentElement).appendChild(styleEl);
         }
-        styleEl.textContent = sel + "{display:none!important}";
+        styleEl.textContent = css;
       }
     } else {
       if (styleEl) {
@@ -434,6 +457,7 @@
     var btn = $("#wc-plz-submit");
     var input = $("#wc-plz-input");
     if (!btn || !input) return;
+    if (busy) return;
 
     var plz = input.value.replace(/\D/g, "");
 
@@ -443,6 +467,7 @@
       return;
     }
 
+    busy = true;
     btn.disabled = true;
     btn.textContent = "Prüfe …";
     setFeedback("", "");
@@ -458,6 +483,7 @@
         btn.textContent = "Prüfen";
 
         if (!res.success) {
+          busy = false;
           setFeedback(
             res.data && res.data.message ? res.data.message : "Fehler.",
             "error",
@@ -484,6 +510,7 @@
         }, 1200);
       },
       function () {
+        busy = false;
         btn.disabled = false;
         btn.textContent = "Prüfen";
         setFeedback("Verbindungsfehler. Bitte erneut versuchen.", "error");
@@ -545,8 +572,25 @@
           handlePlzSubmit();
         }
       });
+      // Kein maxlength im Markup: eingefügtes "63 667" / "D-63667" würde sonst
+      // vor dem Bereinigen abgeschnitten. Hier auf max. 5 Ziffern normalisieren
+      // und den Cursor hinter derselben Ziffer halten.
       plzInput.addEventListener("input", function () {
-        this.value = this.value.replace(/\D/g, "").slice(0, 5);
+        var raw = this.value;
+        var clean = raw.replace(/\D/g, "").slice(0, 5);
+        if (clean === raw) return;
+        var pos = this.selectionStart;
+        var caret =
+          typeof pos === "number"
+            ? Math.min(
+                raw.slice(0, pos).replace(/\D/g, "").length,
+                clean.length,
+              )
+            : clean.length;
+        this.value = clean;
+        try {
+          this.setSelectionRange(caret, caret);
+        } catch (e) {}
       });
     }
 
@@ -554,6 +598,8 @@
     var pickupBtn = $("#wc-plz-pickup");
     if (pickupBtn) {
       pickupBtn.addEventListener("click", function () {
+        if (busy) return;
+        busy = true; // bleibt gesetzt bis zum Reload
         var btn = $("#wc-plz-submit");
         if (btn) btn.disabled = true;
 
@@ -572,6 +618,8 @@
     var skipBtn = $("#wc-plz-skip");
     if (skipBtn) {
       skipBtn.addEventListener("click", function () {
+        // Doppel-Tap während des Ausblendens → kein zweiter Save
+        if (!isPopupOpen()) return;
         saveState("skipped", "");
         state = { mode: "skipped", plz: "" };
         updateBadge("skipped", "");
@@ -587,9 +635,10 @@
       });
     }
 
-    // Escape key
+    // Escape key – nur bei sichtbarem Popup; sonst würde z. B. das Schließen
+    // der Merkliste oder der Theme-Suche per Escape "skipped" speichern.
     document.addEventListener("keydown", function (e) {
-      if (e.key === "Escape") closePopup();
+      if (e.key === "Escape" && isPopupOpen()) closePopup();
     });
 
     // Badge click
