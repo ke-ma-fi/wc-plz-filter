@@ -25,6 +25,9 @@ final class WC_PLZ_Updater {
     const LOCK_TTL = 600;
     // Wie viele X-GitHub-Delivery-IDs gegen Doppel-Zustellung gemerkt werden.
     const MAX_DELIVERIES = 20;
+    // Einmaliger WP-Cron-Nachlauf, wenn ein Webhook auf eine laufende Sperre trifft.
+    const RETRY_HOOK  = 'wc_plz_updater_retry';
+    const RETRY_DELAY = 60;
 
     private string $upgrade_branch = 'main';
 
@@ -37,6 +40,7 @@ final class WC_PLZ_Updater {
         add_action( 'admin_post_wc_plz_regenerate_secret', [ $this, 'handle_regenerate_secret' ] );
         add_action( 'admin_post_wc_plz_grant_update_cap', [ $this, 'handle_grant_update_cap' ] );
         add_action( 'admin_notices',  [ $this, 'show_update_notice' ] );
+        add_action( self::RETRY_HOOK, [ $this, 'run_retry' ] );
     }
 
     /**
@@ -206,7 +210,10 @@ final class WC_PLZ_Updater {
         $result = $this->run_upgrade();
 
         if ( ! empty( $result['locked'] ) ) {
-            return new WP_REST_Response( [ 'error' => 'locked' ], 409 );
+            // Der laufende Update-Lauf hat das Branch-Zip evtl. schon vor diesem
+            // Push geladen - ohne Nachlauf bliebe der Shop auf dem älteren Stand.
+            $this->schedule_retry();
+            return new WP_REST_Response( [ 'error' => 'locked', 'retry' => 'scheduled' ], 409 );
         }
 
         // Nur erfolgreiche Läufe merken, damit „Redeliver“ auf GitHub
@@ -219,6 +226,34 @@ final class WC_PLZ_Updater {
             [ 'updated' => $result['success'], 'message' => $result['message'] ],
             $result['success'] ? 200 : 500
         );
+    }
+
+    // ── Nachlauf nach 409 ─────────────────────────────────────────────────
+
+    private function schedule_retry(): void {
+        if ( ! wp_next_scheduled( self::RETRY_HOOK ) ) {
+            wp_schedule_single_event( time() + self::RETRY_DELAY, self::RETRY_HOOK );
+        }
+    }
+
+    /**
+     * WP-Cron: holt das Update nach, das wegen einer laufenden Sperre mit 409
+     * abgewiesen wurde. Ist die Sperre noch aktiv, erneut einplanen - spätestens
+     * nach LOCK_TTL gilt sie als verwaist und wird übernommen.
+     */
+    public function run_retry(): void {
+        // Noch gesperrt → ohne Log-Eintrag neu einplanen (das Update-Log hält
+        // nur 10 Einträge, „Gesperrt“-Zeilen würden echte Läufe verdrängen).
+        $since = $this->get_lock_time();
+        if ( $since !== 0 && $since > time() - self::LOCK_TTL ) {
+            $this->schedule_retry();
+            return;
+        }
+
+        $result = $this->run_upgrade();
+        if ( ! empty( $result['locked'] ) ) {
+            $this->schedule_retry();
+        }
     }
 
     // ── Upgrade logic ─────────────────────────────────────────────────────

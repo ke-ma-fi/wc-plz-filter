@@ -29,7 +29,7 @@ The cron interval is a **custom schedule** (`wc_plz_reminder_interval`) register
 
 Changing either `dev_mode` or `cron_interval` in settings triggers `maybe_reschedule_cron()` (hooked to `update_option_wc_plz_reminder`, and to `add_option_wc_plz_reminder` for the very first save), which unschedules and — if in live mode — immediately re-schedules the cron with the new interval. No save-and-wait-for-next-run gap.
 
-The install routine (`WC_PLZ_Filter::install()`, run on activation and once per plugin version after an update) also brings the cron in line with the settings: scheduled in live mode, removed in dev mode.
+On activation, `WC_PLZ_Filter::install()` also brings the cron in line with the settings: scheduled in live mode, removed in dev mode. After a webhook update, the per-version `WC_PLZ_Filter::upgrade()` only **removes** a stray cron in dev mode — it never schedules one, so an update can't start mailing customers on its own; going live always takes an explicit settings save.
 
 ## Settings
 

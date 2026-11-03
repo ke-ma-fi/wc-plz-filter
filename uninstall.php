@@ -113,6 +113,7 @@ unset( $wc_plz_cap, $wc_plz_users, $wc_plz_user );
 // 5. Clear scheduled cron hooks.
 wp_clear_scheduled_hook( 'wc_plz_stats_cleanup' );  // WC_PLZ_Stats::CRON_HOOK
 wp_clear_scheduled_hook( 'wc_plz_reminder_scan' );  // WC_PLZ_Reminder::CRON_HOOK
+wp_clear_scheduled_hook( 'wc_plz_updater_retry' );  // WC_PLZ_Updater::RETRY_HOOK
 
 // 6. Delete reminder options. The order meta reminded_pending_payment
 // (WC_PLZ_Reminder::META_FLAG) is deliberately kept: it is order history.

@@ -25,7 +25,7 @@ Indexed on `created` (for range queries/cleanup) and `(mode, plz)` (for aggregat
 
 ## Retention & cleanup
 
-A daily WP-Cron event (`wc_plz_stats_cleanup`, scheduled by `WC_PLZ_Filter::install()` — on activation and once per plugin version after an update) runs `run_cleanup()`, which enforces two independent limits (configurable in the admin dashboard, stored in the `wc_plz_stats_cleanup` option):
+A daily WP-Cron event (`wc_plz_stats_cleanup`, scheduled on activation by `WC_PLZ_Filter::install()` and re-ensured once per plugin version after an update by `WC_PLZ_Stats::ensure_installed()`) runs `run_cleanup()`, which enforces two independent limits (configurable in the admin dashboard, stored in the `wc_plz_stats_cleanup` option):
 
 - **TTL** (default: 180 days, minimum 1) — rows older than this are deleted outright.
 - **Max rows** (default: 100,000, minimum 100) — if the table still exceeds this after the TTL pass, the oldest remaining rows are deleted until it doesn't.

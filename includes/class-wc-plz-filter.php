@@ -12,10 +12,10 @@ final class WC_PLZ_Filter {
     const HIDDEN_VERSION  = 'wc_plz_hidden_version';
     const MANAGE_CAP      = 'manage_plz_filter';
 
-    /** Roles that get MANAGE_CAP on install/upgrade and lose it on deactivation. */
+    /** Roles that get MANAGE_CAP on activation and lose it on deactivation. */
     const MANAGE_CAP_ROLES = [ 'administrator', 'shop_manager' ];
 
-    /** Plugin VERSION for which install() last ran via maybe_upgrade(). */
+    /** Plugin VERSION for which upgrade() last ran via maybe_upgrade(). */
     const OPT_UPGRADED_VERSION = 'wc_plz_upgraded_version';
 
     private ?array $settings_cache = null;
@@ -56,10 +56,9 @@ final class WC_PLZ_Filter {
      * Sets up everything the plugin expects to exist: stats table, cron
      * events and capabilities. Idempotent - safe to run any number of times.
      *
-     * Called from the activation hook and from maybe_upgrade(). The latter is
-     * what matters in production: the webhook updater replaces the files in
-     * place and never re-fires register_activation_hook, so anything added
-     * here later only reaches the live shop through maybe_upgrade().
+     * Called from the activation hook only. Webhook updates never re-fire
+     * register_activation_hook; their per-version counterpart is the more
+     * conservative upgrade() below.
      */
     public static function install(): void {
         require_once WC_PLZ_FILTER_DIR . 'includes/class-wc-plz-stats.php';
@@ -88,22 +87,44 @@ final class WC_PLZ_Filter {
     }
 
     /**
-     * Runs install() once per plugin VERSION. Hooked on every request
+     * Runs upgrade() once per plugin VERSION. Hooked on every request
      * (frontend included - the shop has no regular admin logins), so the
      * common path is a single autoloaded option read.
      *
-     * The version is recorded before install() runs, mirroring
+     * The version is recorded before upgrade() runs, mirroring
      * maybe_bust_rocket_cache(): right after a deploy many requests arrive
-     * at once, and this keeps them from all running dbDelta()/cron
-     * scheduling in parallel. Everything in install() is idempotent, so the
-     * worst case of an interrupted run is a retry on the next version.
+     * at once, and this keeps most of them from running it in parallel.
+     * Everything in upgrade() is idempotent, so a parallel or interrupted
+     * run is harmless.
      */
     public function maybe_upgrade(): void {
         if ( get_option( self::OPT_UPGRADED_VERSION, '' ) === self::VERSION ) {
             return;
         }
         update_option( self::OPT_UPGRADED_VERSION, self::VERSION, true );
-        self::install();
+        self::upgrade();
+    }
+
+    /**
+     * Per-version counterpart of install(), deliberately more conservative
+     * because it runs unattended on a live-shop request right after a deploy:
+     *
+     * - Stats table: dbDelta() only when the schema version changed - an
+     *   unconditional dbDelta() issues ALTER TABLE on every version bump.
+     * - Payment reminder: never newly schedules the cron. A live-mode cron
+     *   that was never registered would otherwise start mailing every old
+     *   pending order the moment a deploy lands; switching to live mode
+     *   stays an explicit settings save. Only removes a stray cron in dev mode.
+     * - Role capabilities: left alone, so a deliberate removal by the
+     *   operator survives updates (the updater keeps its own per-version
+     *   grant of MANAGE_UPDATE_CAP, see WC_PLZ_Updater).
+     */
+    private static function upgrade(): void {
+        require_once WC_PLZ_FILTER_DIR . 'includes/class-wc-plz-stats.php';
+        WC_PLZ_Stats::ensure_installed();
+
+        require_once WC_PLZ_FILTER_DIR . 'includes/class-wc-plz-reminder.php';
+        WC_PLZ_Reminder::remove_stray_cron();
     }
 
     public function init(): void {
