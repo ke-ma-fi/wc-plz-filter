@@ -5,12 +5,18 @@ final class WC_PLZ_Filter {
 
     use WC_PLZ_Singleton;
 
-    const VERSION         = '2.12.9';
+    const VERSION         = '2.13.0';
     const COOKIE          = 'wc_delivery_mode';
     const OPT             = 'wc_plz_filter_v2';
     const CACHE           = 'wc_plz_local_codes';
     const HIDDEN_VERSION  = 'wc_plz_hidden_version';
     const MANAGE_CAP      = 'manage_plz_filter';
+
+    /** Roles that get MANAGE_CAP on activation and lose it on deactivation. */
+    const MANAGE_CAP_ROLES = [ 'administrator', 'shop_manager' ];
+
+    /** Plugin VERSION for which upgrade() last ran via maybe_upgrade(). */
+    const OPT_UPGRADED_VERSION = 'wc_plz_upgraded_version';
 
     private ?array $settings_cache = null;
     private ?WC_PLZ_Stats   $stats   = null;
@@ -44,6 +50,81 @@ final class WC_PLZ_Filter {
         if ( function_exists( 'rocket_clean_domain' ) ) {
             rocket_clean_domain();
         }
+    }
+
+    /**
+     * Sets up everything the plugin expects to exist: stats table, cron
+     * events and capabilities. Idempotent - safe to run any number of times.
+     *
+     * Called from the activation hook only. Webhook updates never re-fire
+     * register_activation_hook; their per-version counterpart is the more
+     * conservative upgrade() below.
+     */
+    public static function install(): void {
+        require_once WC_PLZ_FILTER_DIR . 'includes/class-wc-plz-stats.php';
+        WC_PLZ_Stats::activate();
+
+        require_once WC_PLZ_FILTER_DIR . 'includes/class-wc-plz-reminder.php';
+        WC_PLZ_Reminder::activate();
+
+        require_once WC_PLZ_FILTER_DIR . 'includes/class-wc-plz-updater.php';
+
+        // Capability an Rollen vergeben, die standardmäßig Zugriff haben sollen.
+        // Einzelne Benutzer können zusätzlich über "Benutzer > Bearbeiten" berechtigt werden.
+        foreach ( self::MANAGE_CAP_ROLES as $role_name ) {
+            $role = get_role( $role_name );
+            if ( $role ) {
+                $role->add_cap( self::MANAGE_CAP );
+            }
+        }
+
+        // Auto-Update-Verwaltung ist strenger als die allgemeine Plugin-Verwaltung:
+        // nur Administratoren, kein shop_manager (siehe manage_woohoo_updates).
+        $admin_role = get_role( 'administrator' );
+        if ( $admin_role ) {
+            $admin_role->add_cap( WC_PLZ_Updater::MANAGE_UPDATE_CAP );
+        }
+    }
+
+    /**
+     * Runs upgrade() once per plugin VERSION. Hooked on every request
+     * (frontend included - the shop has no regular admin logins), so the
+     * common path is a single autoloaded option read.
+     *
+     * The version is recorded before upgrade() runs, mirroring
+     * maybe_bust_rocket_cache(): right after a deploy many requests arrive
+     * at once, and this keeps most of them from running it in parallel.
+     * Everything in upgrade() is idempotent, so a parallel or interrupted
+     * run is harmless.
+     */
+    public function maybe_upgrade(): void {
+        if ( get_option( self::OPT_UPGRADED_VERSION, '' ) === self::VERSION ) {
+            return;
+        }
+        update_option( self::OPT_UPGRADED_VERSION, self::VERSION, true );
+        self::upgrade();
+    }
+
+    /**
+     * Per-version counterpart of install(), deliberately more conservative
+     * because it runs unattended on a live-shop request right after a deploy:
+     *
+     * - Stats table: dbDelta() only when the schema version changed - an
+     *   unconditional dbDelta() issues ALTER TABLE on every version bump.
+     * - Payment reminder: never newly schedules the cron. A live-mode cron
+     *   that was never registered would otherwise start mailing every old
+     *   pending order the moment a deploy lands; switching to live mode
+     *   stays an explicit settings save. Only removes a stray cron in dev mode.
+     * - Role capabilities: left alone, so a deliberate removal by the
+     *   operator survives updates (the updater keeps its own per-version
+     *   grant of MANAGE_UPDATE_CAP, see WC_PLZ_Updater).
+     */
+    private static function upgrade(): void {
+        require_once WC_PLZ_FILTER_DIR . 'includes/class-wc-plz-stats.php';
+        WC_PLZ_Stats::ensure_installed();
+
+        require_once WC_PLZ_FILTER_DIR . 'includes/class-wc-plz-reminder.php';
+        WC_PLZ_Reminder::remove_stray_cron();
     }
 
     public function init(): void {
@@ -98,7 +179,13 @@ final class WC_PLZ_Filter {
             $admin_page->register_module( new Woohoo_Module_Widgets() );
         }
 
+        // Priority 5: before anything on init that might rely on the table,
+        // crons or capabilities (same slot WooCommerce uses for its own
+        // version check).
+        add_action( 'init', [ $this, 'maybe_upgrade' ], 5 );
+
         add_action( 'admin_init', [ $this, 'register_settings' ] );
+        add_action( 'admin_init', [ $this, 'register_settings_capabilities' ] );
         add_action( 'admin_init', [ $this, 'handle_admin_reset' ] );
         add_action( 'admin_post_wc_plz_bust_rocket_cache', [ $this, 'handle_bust_rocket_cache' ] );
         add_action( 'admin_notices', [ $this, 'show_rocket_cache_notice' ] );
@@ -423,6 +510,27 @@ final class WC_PLZ_Filter {
             ],
         ];
         $q->set( 'tax_query', $tax );
+
+        // The product list is now specific to this visitor's cookie. WP Rocket
+        // decides what to cache from the request alone (it does not know about
+        // wc_delivery_mode), so without this the filtered page could land in the
+        // full-page cache and be served to every visitor - including pickup and
+        // local-delivery customers, who would then miss products. Only this
+        // response is excluded; post-mode visitors may still get cached
+        // (unfiltered) pages, where the client-side hiding (head script +
+        // plz-popup.js) removes the excluded products.
+        self::do_not_cache_page();
+    }
+
+    /**
+     * Tells WP Rocket (and other page caches honouring the de-facto standard
+     * constant) not to store the current response, because it depends on the
+     * visitor's wc_delivery_mode cookie.
+     */
+    private static function do_not_cache_page(): void {
+        if ( ! defined( 'DONOTCACHEPAGE' ) ) {
+            define( 'DONOTCACHEPAGE', true );
+        }
     }
 
     /* --- fgf-Hardening: Server-Side Enforcement --- */
@@ -665,6 +773,11 @@ final class WC_PLZ_Filter {
             return;
         }
 
+        // Cookie-dependent response (redirect for post-mode visitors, the
+        // product page for everyone else). WP Rocket only caches 200
+        // responses, so this is defence in depth rather than a known leak.
+        self::do_not_cache_page();
+
         $back = add_query_arg( 'plz_blocked', '1', wp_get_referer() ?: home_url( '/' ) );
         wp_safe_redirect( $back );
         exit;
@@ -863,18 +976,22 @@ final class WC_PLZ_Filter {
                 var ids = JSON.parse(localStorage.getItem('wc_plz_hidden_ids') || '[]');
                 var slugs = JSON.parse(localStorage.getItem('wc_plz_hidden_slugs') || '[]');
                 if (!ids.length && !slugs.length) return;
+                // Zwei getrennte Regeln: Browser ohne :has()-Support verwerfen sonst
+                // die komplette Selektorliste – und damit auch die ID-Selektoren.
+                var css = '';
                 // .pdb{ID} = fgf-Custom-Grid; .products .post-{ID} = WC-Standard-Loops
                 // (Cross-Sells / Up-Sells / Related / Shop). Niemals body.post-{ID} oder
                 // article.post-{ID} matchen, sonst verschwindet die Single-Product-Page.
-                var sel = ids.map(function(id){ return '.pdb' + id + ', .products .post-' + id; }).join(',');
-                if (slugs.length) {
-                    var cSel = slugs.map(function(s){ return '.jet-woo-products__inner-box:has(a[href*="/' + s + '/"])'; }).join(',');
-                    sel = sel ? sel + ',' + cSel : cSel;
+                if (ids.length) {
+                    css += ids.map(function(id){ return '.pdb' + id + ', .products .post-' + id; }).join(',') + '{display:none!important}';
                 }
-                if (!sel) return;
+                if (slugs.length) {
+                    css += slugs.map(function(s){ return '.jet-woo-products__inner-box:has(a[href*="/' + s + '/"])'; }).join(',') + '{display:none!important}';
+                }
+                if (!css) return;
                 var s = document.createElement('style');
                 s.id = 'wc-plz-hide-style';
-                s.textContent = sel + '{display:none!important}';
+                s.textContent = css;
                 (document.head || document.documentElement).appendChild(s);
             } catch (e) {}
         })();
@@ -926,7 +1043,7 @@ final class WC_PLZ_Filter {
                     <div class="wc-plz-section">
                         <label class="wc-plz-label" for="wc-plz-input">Postleitzahl für Lieferung / Versand</label>
                         <div class="wc-plz-input-row">
-                            <input type="text" id="wc-plz-input" class="wc-plz-input" maxlength="5" inputmode="numeric" pattern="[0-9]{5}" placeholder="z. B. 63667" autocomplete="postal-code" />
+                            <input type="text" id="wc-plz-input" class="wc-plz-input" inputmode="numeric" pattern="[0-9]{5}" placeholder="z. B. 63667" autocomplete="postal-code" />
                             <button id="wc-plz-submit" class="wc-plz-btn wc-plz-btn--primary">Prüfen</button>
                         </div>
                         <div id="wc-plz-feedback" class="wc-plz-feedback" aria-live="polite"></div>
@@ -1009,10 +1126,55 @@ final class WC_PLZ_Filter {
     }
 
     public function register_settings(): void {
+        // Save capability for this group: see settings_group_caps().
         register_setting( 'wc_plz_filter_group', self::OPT, [
             'sanitize_callback' => [ $this, 'sanitize_settings' ],
         ] );
-        add_filter( 'option_page_capability_wc_plz_filter_group', fn() => self::MANAGE_CAP );
+    }
+
+    /**
+     * Central registry: settings group => capability options.php requires
+     * to save it. EVERY register_setting() group of this plugin must be
+     * listed here - without an option_page_capability_{group} filter,
+     * options.php falls back to manage_options and accounts holding only
+     * MANAGE_CAP (shop_manager) get "Sorry, you are not allowed to modify
+     * this page." on save. See docs/notes/settings-capability-filter.md.
+     *
+     * Groups mapped to MANAGE_CAP are saveable by manage_options OR
+     * MANAGE_CAP (admins whose role lost MANAGE_CAP aren't locked out).
+     * Any other capability is applied strictly, without that shortcut.
+     *
+     * A method rather than a class constant on purpose: a constant
+     * referencing WC_PLZ_Updater::MANAGE_UPDATE_CAP would be resolved when
+     * WC_PLZ_Filter is instantiated at plugin load - before
+     * class-wc-plz-updater.php is required - and fatal. This is only
+     * called on admin_init, after init() has loaded every module class.
+     */
+    private static function settings_group_caps(): array {
+        return [
+            'wc_plz_filter_group'           => self::MANAGE_CAP,
+            'wc_plz_widgets_group'          => self::MANAGE_CAP, // Merkliste + Cart-Indicator
+            'wc_plz_reminder_group'         => self::MANAGE_CAP,
+            'woohoo_product_overview_group' => self::MANAGE_CAP,
+            // Strict: admins + explicitly granted users only, no manage_options shortcut.
+            'wc_plz_updater_group'          => WC_PLZ_Updater::MANAGE_UPDATE_CAP,
+        ];
+    }
+
+    /**
+     * Applies settings_group_caps(). Hooked on admin_init, which runs on
+     * every wp-admin request - including the options.php POST that saves a
+     * settings form - before options.php reads the filter.
+     */
+    public function register_settings_capabilities(): void {
+        foreach ( self::settings_group_caps() as $group => $cap ) {
+            add_filter( "option_page_capability_{$group}", static function () use ( $cap ) {
+                if ( $cap === self::MANAGE_CAP && current_user_can( 'manage_options' ) ) {
+                    return 'manage_options';
+                }
+                return $cap;
+            } );
+        }
     }
 
     public function sanitize_settings( array $input ): array {

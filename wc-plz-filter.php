@@ -2,12 +2,13 @@
 /**
  * Plugin Name:  DT Woohoo
  * Plugin URI:   https://fischer.digitale-theke.com
- * Description:  PLZ-Popup mit drei Modi (Abholung, Lokale Lieferung, Postversand). Filtert Produkte dynamisch nach WooCommerce-Versandklassen und füllt den Checkout vor.
- * Version:      2.12.9
+ * Description:  WooCommerce-Erweiterungen der Metzgerei Fischer: PLZ-Popup mit Liefermodus-Produktfilter, PLZ-Statistik, Zahlungs-Erinnerung mit Mail-Log, Merkliste, Warenkorb-Anzeige, Produktübersicht und GitHub-Auto-Updater.
+ * Version:      2.13.0
  * Author:       Metzgerei Fischer
  * License:      Proprietary
  * License URI:  https://fischer.digitale-theke.com
  * Text Domain:  wc-plz-filter
+ * Requires at least: 6.0
  * Requires PHP: 8.0
  * WC requires at least: 7.0
  *
@@ -34,32 +35,20 @@ require_once WC_PLZ_FILTER_DIR . 'includes/class-wc-plz-filter.php';
 
 WC_PLZ_Filter::instance();
 
-// Lifecycle hooks.
-register_activation_hook( __FILE__, function () {
-    require_once WC_PLZ_FILTER_DIR . 'includes/class-wc-plz-stats.php';
-    WC_PLZ_Stats::activate();
-
-    require_once WC_PLZ_FILTER_DIR . 'includes/class-wc-plz-reminder.php';
-    WC_PLZ_Reminder::activate();
-
-    require_once WC_PLZ_FILTER_DIR . 'includes/class-wc-plz-updater.php';
-
-    // Capability an Rollen vergeben, die standardmäßig Zugriff haben sollen.
-    // Einzelne Benutzer können zusätzlich über "Benutzer > Bearbeiten" berechtigt werden.
-    foreach ( [ 'administrator', 'shop_manager' ] as $role_name ) {
-        $role = get_role( $role_name );
-        if ( $role ) {
-            $role->add_cap( WC_PLZ_Filter::MANAGE_CAP );
-        }
-    }
-
-    // Auto-Update-Verwaltung ist strenger als die allgemeine Plugin-Verwaltung:
-    // nur Administratoren, kein shop_manager (siehe manage_woohoo_updates).
-    $admin_role = get_role( 'administrator' );
-    if ( $admin_role ) {
-        $admin_role->add_cap( WC_PLZ_Updater::MANAGE_UPDATE_CAP );
+// HPOS (custom order tables): all order access goes through the WooCommerce
+// CRUD API (wc_get_orders(), wc_get_order(), WC_Order meta methods). The
+// shop itself still runs on posts storage; this only declares that the
+// plugin works either way. cart_checkout_blocks is deliberately NOT
+// declared: the plugin relies on classic checkout hooks.
+add_action( 'before_woocommerce_init', function () {
+    if ( class_exists( \Automattic\WooCommerce\Utilities\FeaturesUtil::class ) ) {
+        \Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility( 'custom_order_tables', __FILE__, true );
     }
 } );
+
+// Lifecycle hooks. Activation runs WC_PLZ_Filter::install(); webhook updates
+// run the more conservative WC_PLZ_Filter::upgrade() via maybe_upgrade().
+register_activation_hook( __FILE__, [ 'WC_PLZ_Filter', 'install' ] );
 
 register_deactivation_hook( __FILE__, function () {
     wp_clear_scheduled_hook( 'wc_plz_stats_cleanup' );
@@ -68,8 +57,9 @@ register_deactivation_hook( __FILE__, function () {
     WC_PLZ_Reminder::deactivate();
 
     require_once WC_PLZ_FILTER_DIR . 'includes/class-wc-plz-updater.php';
+    wp_clear_scheduled_hook( WC_PLZ_Updater::RETRY_HOOK );
 
-    foreach ( [ 'administrator', 'shop_manager' ] as $role_name ) {
+    foreach ( WC_PLZ_Filter::MANAGE_CAP_ROLES as $role_name ) {
         $role = get_role( $role_name );
         if ( $role ) {
             $role->remove_cap( WC_PLZ_Filter::MANAGE_CAP );

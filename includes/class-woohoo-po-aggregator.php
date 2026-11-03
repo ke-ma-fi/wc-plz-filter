@@ -8,7 +8,10 @@ defined( 'ABSPATH' ) || exit;
  * workflows: groups open orders' line items by parent product, summing
  * quantities across units (kg/g/l/ml/cl/mg, "Xer"/"X Paar" pack sizes) so
  * warehouse staff see one consolidated line per product instead of one row
- * per order. Pure query + math - no WordPress output, no HTML - so this
+ * per order. Refunded quantities are netted out, and a product whose lines
+ * come in different unit dimensions (mass, volume, pieces) keeps one
+ * subtotal per dimension ("3,5 kg + 4 Stück") instead of adding grams to
+ * pieces. Pure query + math - no WordPress output, no HTML - so this
  * class stays testable independent of the request/response layer that
  * Woohoo_Product_Overview owns.
  *
@@ -21,6 +24,8 @@ final class Woohoo_PO_Aggregator {
     const LOCAL_DATE_META = '_willii_delivery_date';
     const POST_METHOD_TITLE = 'Postversand';
 
+    private const PIECE_UNIT = 'Stück';
+
     private const UNIT_CONVERSIONS = [
         'kg' => [ 1000, 'g' ],
         'g'  => [ 1, 'g' ],
@@ -29,6 +34,24 @@ final class Woohoo_PO_Aggregator {
         'cl' => [ 10, 'ml' ],
         'mg' => [ 0.001, 'g' ],
     ];
+
+    /** Spelled-out / colloquial unit names, normalised to a UNIT_CONVERSIONS key. */
+    private const UNIT_ALIASES = [
+        'kilogramm'  => 'kg',
+        'kilo'       => 'kg',
+        'gramm'      => 'g',
+        'gr'         => 'g',
+        'milligramm' => 'mg',
+        'liter'      => 'l',
+        'litre'      => 'l',
+        'ltr'        => 'l',
+        'milliliter' => 'ml',
+        'centiliter' => 'cl',
+        'zentiliter' => 'cl',
+    ];
+
+    /** Display order of a group's per-unit subtotals in total_label. */
+    private const TOTAL_UNIT_ORDER = [ 'g', 'ml', self::PIECE_UNIT ];
 
     /**
      * Local delivery: orders whose "_willii_delivery_date" meta (written by
@@ -99,30 +122,53 @@ final class Woohoo_PO_Aggregator {
             $customer_name   = trim( $order->get_billing_first_name() . ' ' . $order->get_billing_last_name() );
             $shipping_method = self::shipping_method_title( $order );
 
-            foreach ( $order->get_items( 'line_item' ) as $item ) {
+            foreach ( $order->get_items( 'line_item' ) as $item_id => $item ) {
                 /** @var \WC_Order_Item_Product $item */
-                self::aggregate_item( $groups, $item, $customer_name, $shipping_method );
+                // get_qty_refunded_for_item() is <= 0 (refund quantities are
+                // stored negative), so adding it nets the refund out. A fully
+                // refunded line no longer needs packing and is skipped.
+                $net_qty = $item->get_quantity() + $order->get_qty_refunded_for_item( $item_id );
+                if ( $net_qty <= 0 ) {
+                    continue;
+                }
+                self::aggregate_item( $groups, $item, $net_qty, $customer_name, $shipping_method );
             }
         }
 
         $result = array_values( $groups );
-        usort( $result, fn( array $a, array $b ) => $b['total'] <=> $a['total'] );
+        usort( $result, [ self::class, 'compare_groups' ] );
 
         foreach ( $result as &$group ) {
-            $group['total_label'] = self::format_weight( $group['total'], $group['unit'] );
+            $group['total_label'] = self::format_totals( $group['totals'] );
             foreach ( $group['orders'] as &$order_row ) {
-                $order_row['qty_label'] = self::format_menge( $order_row, $group['unit'] );
+                $order_row['qty_label'] = self::format_menge( $order_row );
                 unset( $order_row['weight_per_unit'], $order_row['multiplier'], $order_row['raw_qty'], $order_row['calc_qty'], $order_row['unit'] );
             }
             unset( $order_row );
-            unset( $group['total'], $group['unit'] );
+            unset( $group['totals'] );
         }
         unset( $group );
 
         return [ 'groups' => $result ];
     }
 
-    private static function aggregate_item( array &$groups, \WC_Order_Item_Product $item, string $customer_name, string $shipping_method ): void {
+    /**
+     * Sort order for groups: weighed products (mass + volume, g ≈ ml) first,
+     * heaviest first; piece counts only break ties - and so order the
+     * piece-only groups among themselves. Grams and pieces have no common
+     * scale, so comparing them as raw numbers would be meaningless.
+     */
+    private static function compare_groups( array $a, array $b ): int {
+        $weighed_a = ( $a['totals']['g'] ?? 0 ) + ( $a['totals']['ml'] ?? 0 );
+        $weighed_b = ( $b['totals']['g'] ?? 0 ) + ( $b['totals']['ml'] ?? 0 );
+        return [ $weighed_b, $b['totals'][ self::PIECE_UNIT ] ?? 0 ]
+            <=> [ $weighed_a, $a['totals'][ self::PIECE_UNIT ] ?? 0 ];
+    }
+
+    /**
+     * @param int|float $raw_qty Net line quantity (ordered minus refunded), > 0.
+     */
+    private static function aggregate_item( array &$groups, \WC_Order_Item_Product $item, $raw_qty, string $customer_name, string $shipping_method ): void {
         $product_id = $item->get_product_id();
         $parent     = $product_id ? wc_get_product( $product_id ) : null;
         $name       = $parent ? $parent->get_name() : $item->get_name();
@@ -146,14 +192,17 @@ final class Woohoo_PO_Aggregator {
             $groups[ $key ] = [
                 'name'   => $name,
                 'sku'    => $sku,
-                'total'  => 0.0,
-                'unit'   => $weight ? $weight['unit'] : 'Stück',
+                'totals' => [],
                 'orders' => [],
             ];
         }
 
-        $qty = $weight ? $item->get_quantity() * $weight['val'] : $item->get_quantity() * $multiplier;
-        $groups[ $key ]['total'] += $qty;
+        // Each line counts in its own unit dimension ("g", "ml" or "Stück"):
+        // a product sold both by weight and by piece (or with a line lacking
+        // weight meta) gets one subtotal per unit, never grams + pieces.
+        $unit = $weight ? $weight['unit'] : self::PIECE_UNIT;
+        $qty  = $weight ? $raw_qty * $weight['val'] : $raw_qty * $multiplier;
+        $groups[ $key ]['totals'][ $unit ] = ( $groups[ $key ]['totals'][ $unit ] ?? 0 ) + $qty;
 
         $weight_per_unit = $weight ? $weight['val'] : null;
         $found_index = null;
@@ -161,7 +210,9 @@ final class Woohoo_PO_Aggregator {
             if ( $existing['customer_name'] === $customer_name
                 && $existing['variant'] === $variant_str
                 && $existing['shipping_method'] === $shipping_method
+                && $existing['unit'] === $unit
                 && $existing['weight_per_unit'] === $weight_per_unit
+                && $existing['multiplier'] === $multiplier
             ) {
                 $found_index = $i;
                 break;
@@ -169,7 +220,7 @@ final class Woohoo_PO_Aggregator {
         }
 
         if ( $found_index !== null ) {
-            $groups[ $key ]['orders'][ $found_index ]['raw_qty']  += $item->get_quantity();
+            $groups[ $key ]['orders'][ $found_index ]['raw_qty']  += $raw_qty;
             $groups[ $key ]['orders'][ $found_index ]['calc_qty'] += $qty;
             return;
         }
@@ -178,9 +229,9 @@ final class Woohoo_PO_Aggregator {
             'customer_name'   => $customer_name,
             'shipping_method' => $shipping_method,
             'variant'         => $variant_str,
-            'raw_qty'         => $item->get_quantity(),
+            'raw_qty'         => $raw_qty,
             'calc_qty'        => $qty,
-            'unit'            => $weight ? $weight['unit'] : 'Stück',
+            'unit'            => $unit,
             'weight_per_unit' => $weight_per_unit,
             'multiplier'      => $multiplier,
         ];
@@ -206,19 +257,45 @@ final class Woohoo_PO_Aggregator {
         return null;
     }
 
+    /**
+     * Parses the first "<number> <unit>" in a weight string, e.g. "500 g",
+     * "500gr", "500 Gramm", "1,5 kg", "1.5 kg", "1 Liter", "0,25 l".
+     *
+     * Number formats: "1,5" and "1.5" are decimals. A dot followed by
+     * exactly three digits is read as a German thousands separator only where
+     * that is the plausible meaning: with small units (g/mg/ml/cl) and a
+     * leading group other than "0" ("1.000 g" = 1000 g), or when a decimal
+     * comma follows ("1.000,5 g"). With kg/l it stays a decimal point
+     * ("0.500 kg" = 500 g, "1.250 kg" = 1,25 kg).
+     */
     private static function parse_weight( ?string $str ): ?array {
         if ( $str === null || $str === '' ) {
             return null;
         }
-        if ( ! preg_match( '/(\d+(?:[.,]\d+)?)\s*(kg|g|ml|l|cl|mg)\b/i', $str, $m ) ) {
+        // /u + letter lookahead instead of \b: without it "2 Grüne …" matched
+        // "Gr" as grams, because \b sees the multibyte "ü" as a non-word byte.
+        $pattern = '/(?<!\d)(?<!\d[.,])(\d{1,3}(?:\.\d{3})+(?:,\d+)?(?!\d)|\d+(?:[.,]\d+)?)\s*'
+            . '(kilogramm|kilo|kg|milligramm|mg|gramm|gr|g|milliliter|ml|centiliter|zentiliter|cl|liter|litre|ltr|l)(?![\p{L}\d])/iu';
+        if ( ! preg_match( $pattern, $str, $m ) ) {
             return null;
         }
 
-        $val  = (float) str_replace( ',', '.', $m[1] );
         $unit = strtolower( $m[2] );
+        $unit = self::UNIT_ALIASES[ $unit ] ?? $unit;
         if ( ! isset( self::UNIT_CONVERSIONS[ $unit ] ) ) {
             return null;
         }
+
+        $number = $m[1];
+        if ( preg_match( '/^\d{1,3}(?:\.\d{3})+(?:,\d+)?$/', $number ) ) {
+            $has_comma    = strpos( $number, ',' ) !== false;
+            $small_unit   = in_array( $unit, [ 'g', 'mg', 'ml', 'cl' ], true );
+            $leading_zero = strpos( $number, '0.' ) === 0;
+            if ( $has_comma || ( $small_unit && ! $leading_zero ) ) {
+                $number = str_replace( '.', '', $number );
+            }
+        }
+        $val = (float) str_replace( ',', '.', $number );
 
         [ $factor, $target_unit ] = self::UNIT_CONVERSIONS[ $unit ];
         return [ 'val' => $val * $factor, 'unit' => $target_unit ];
@@ -239,14 +316,12 @@ final class Woohoo_PO_Aggregator {
         if ( abs( $val - round( $val ) ) < 0.0001 ) {
             return (string) (int) round( $val );
         }
-        return rtrim( rtrim( number_format( $val, 2, ',', '' ), '0' ), ',' );
+        return rtrim( rtrim( number_format( $val, 3, ',', '' ), '0' ), ',' );
     }
 
     /**
-     * $val is nullable defensively: within a weight-based group, one line
-     * item could theoretically lack parseable weight meta while a sibling
-     * item of the same product key set the group's unit. Treated as 0
-     * rather than left to fatal on a null arithmetic op.
+     * $val is nullable defensively (weight_per_unit is null for piece rows);
+     * treated as 0 rather than left to fatal on a null arithmetic op.
      */
     private static function format_weight( ?float $val, string $unit ): string {
         $val = $val ?? 0.0;
@@ -259,23 +334,46 @@ final class Woohoo_PO_Aggregator {
         return self::format_number( $val ) . ' ' . $unit;
     }
 
-    private static function format_menge( array $order_row, string $group_unit ): string {
-        if ( $group_unit === 'Stück' ) {
-            if ( $order_row['multiplier'] > 1 ) {
-                return sprintf( '%d × %d Stück = %d Stück', $order_row['raw_qty'], $order_row['multiplier'], $order_row['calc_qty'] );
+    /**
+     * Joins a group's per-unit subtotals, e.g. "3,5 kg" or "3,5 kg + 4 Stück".
+     *
+     * @param array<string, int|float> $totals Keyed by "g" / "ml" / "Stück".
+     */
+    private static function format_totals( array $totals ): string {
+        $parts = [];
+        foreach ( self::TOTAL_UNIT_ORDER as $unit ) {
+            if ( isset( $totals[ $unit ] ) ) {
+                $parts[] = self::format_weight( (float) $totals[ $unit ], $unit );
             }
-            return self::format_number( $order_row['calc_qty'] ) . ' Stück';
+        }
+        return implode( ' + ', $parts );
+    }
+
+    private static function format_menge( array $order_row ): string {
+        $unit      = $order_row['unit'];
+        $raw_label = self::format_number( (float) $order_row['raw_qty'] );
+
+        if ( $unit === self::PIECE_UNIT ) {
+            if ( $order_row['multiplier'] > 1 ) {
+                return sprintf(
+                    '%s × %d Stück = %s Stück',
+                    $raw_label,
+                    $order_row['multiplier'],
+                    self::format_number( (float) $order_row['calc_qty'] )
+                );
+            }
+            return self::format_number( (float) $order_row['calc_qty'] ) . ' Stück';
         }
 
-        if ( $order_row['raw_qty'] > 1 ) {
+        if ( abs( $order_row['raw_qty'] - 1 ) >= 0.0001 ) {
             return sprintf(
-                '%d × %s = %s',
-                $order_row['raw_qty'],
-                self::format_weight( $order_row['weight_per_unit'], $group_unit ),
-                self::format_weight( $order_row['calc_qty'], $group_unit )
+                '%s × %s = %s',
+                $raw_label,
+                self::format_weight( $order_row['weight_per_unit'], $unit ),
+                self::format_weight( (float) $order_row['calc_qty'], $unit )
             );
         }
 
-        return self::format_weight( $order_row['calc_qty'], $group_unit );
+        return self::format_weight( (float) $order_row['calc_qty'], $unit );
     }
 }
