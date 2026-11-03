@@ -3,8 +3,8 @@
 > Festgehalten für spätere Umsetzung. Stand: Review vom 2026-07-19,
 > Branch `refactor/isolate-mailservice` (PR [#12](https://github.com/ke-ma-fi/wc-plz-filter/pull/12)).
 
-**Status (2.13.0):** Punkte 1, 4 und 6 sind mit PR #20 (`improve/plugin-hardening`,
-Commit `d9a7ba3`) behoben. Punkte 2, 3 und 5 sind offen (siehe
+**Status (2.13.0):** Punkte 1, 4 und 6 sind mit PR #20 (Squash-Commit `cdc36d2` auf `base`)
+behoben. Punkte 2, 3 und 5 sind offen (siehe
 [ROADMAP](../ROADMAP.md), „Offen nach 2.13.0“).
 
 | # | Thema | Status |

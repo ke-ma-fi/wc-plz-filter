@@ -51,22 +51,23 @@ The plugin runs in production in exactly one shop. It is deployed by merging int
 There is no packaged release. The plugin lives in `wp-content/plugins/wc-plz-filter/` (any folder name works, the updater keeps whatever folder is active).
 
 - **Existing shop:** updates arrive automatically via the GitHub webhook when `main` changes — nothing to install by hand.
-- **Fresh install / emergency reinstall:** build a zip with the right folder name and upload it under *Plugins → Add New → Upload Plugin*:
+- **Fresh install / emergency reinstall:** build a zip and upload it under *Plugins → Add New Plugin → Upload Plugin* (German admin: *Plugins → Neues Plugin hinzufügen → Plugin hochladen*). The folder prefix must match the plugin folder **actually installed on the server** — not necessarily `wc-plz-filter`, since the updater keeps whatever folder name is active (ask the operator, or check `wp-content/plugins/` via FTP):
 
   ```sh
-  git archive --prefix=wc-plz-filter/ -o wc-plz-filter.zip origin/main
+  git archive --prefix=<folder>/ -o <folder>.zip origin/main
+  # usually: git archive --prefix=wc-plz-filter/ -o wc-plz-filter.zip origin/main
   ```
 
-  Don't use GitHub's "Download ZIP" — its folder is called `wc-plz-filter-main` and WordPress would install it as a second plugin. `git archive` honours `.gitattributes`, so `docs/`, `.github/`, `bin/` and `CLAUDE.md` are left out of the package.
-- Activate **DT Woohoo**, then configure it under **WooCommerce → DT Woohoo**, and set up the webhook in the **Updates** tab (see [docs/RUNBOOK.md](docs/RUNBOOK.md)).
+  With a matching folder name WordPress offers "Replace current with uploaded" ("Aktuelle Version mit der hochgeladenen ersetzen"); with a different one it installs a second copy. For the same reason don't use GitHub's "Download ZIP" — its folder is called `wc-plz-filter-main`. `git archive` honours `.gitattributes`, so `docs/`, `.github/`, `bin/` and `CLAUDE.md` are left out of the package.
+- Activate **DT Woohoo**, then configure it under **WooCommerce → DT Woohoo**, and set up the webhook in the **Updates** tab (see the [Runbook](https://github.com/ke-ma-fi/wc-plz-filter/blob/main/docs/RUNBOOK.md)).
 
 ## Deploy & operations
 
 Every push to `main` is a production deploy: GitHub sends a signed push webhook to `/wp-json/wc-plz/v1/webhook`, and the plugin downloads the branch archive and installs it over the active plugin folder. Changes therefore go through pull requests (integration branch `base` → `main`), CI (`php -l` on PHP 8.0–8.3, `node --check`, version check) must be green, and the version must be bumped.
 
-After an update the plugin runs its install routine once per version (`WC_PLZ_Filter::maybe_upgrade()`: stats table, cron events, capabilities) — the activation hook never fires for webhook updates — and purges the WP Rocket cache once per version.
+The activation hook never fires for webhook updates. Instead, once per version, `WC_PLZ_Filter::maybe_upgrade()` runs a lightweight upgrade step: it updates the stats table only when its schema version changed (otherwise it just makes sure the daily cleanup cron exists) and removes a stray payment-reminder cron while dev mode is on. It never schedules the payment-reminder cron (going live stays an explicit settings save) and never changes role capabilities; the full install routine (`WC_PLZ_Filter::install()`) runs on activation only. Separately, the updater grants `manage_woohoo_updates` to administrators once per version, and the WP Rocket cache is purged once per version.
 
-The **[Runbook](docs/RUNBOOK.md)** (German) covers the deploy flow, webhook responses, GitHub ruleset setup, release checklist, rollback, what to do on a fatal error, rotating the webhook secret and the update lock (HTTP 409).
+The **[Runbook](https://github.com/ke-ma-fi/wc-plz-filter/blob/main/docs/RUNBOOK.md)** (German; [local copy](docs/RUNBOOK.md) — `docs/` is not shipped to the shop, so give the operator the GitHub link or a printout in advance) covers the deploy flow, webhook responses, GitHub ruleset setup, release checklist, rollback, what to do on a fatal error, rotating the webhook secret and the update lock (HTTP 409).
 
 Further project documents:
 
@@ -208,8 +209,8 @@ The **Entwickler-Reset** button under WooCommerce → DT Woohoo → Liefermodus 
 
 ## Uninstall
 
-**Deactivating** the plugin removes its cron events and capabilities but keeps all data.
+**Deactivating** the plugin removes its cron events and takes its capabilities away from the roles (`manage_plz_filter` from administrators and shop managers, `manage_woohoo_updates` from administrators) but keeps all data. Capabilities granted to individual users (e.g. `manage_woohoo_updates` via "Update-Rechte vergeben") stay on those users until the plugin is deleted.
 
 **Deleting** the plugin in WordPress (*Plugins → Delete*) runs `uninstall.php` and **irreversibly removes all plugin data**: every option (settings, webhook secret, logs incl. the Mail-Log), the `wp_wc_plz_events` statistics table, the plugin's transients, the `manage_plz_filter` / `manage_woohoo_updates` capabilities (from roles and individual users), its cron events and the auto-provisioned Produktübersicht page. Only the `reminded_pending_payment` order meta is kept as order history.
 
-To take the plugin out of service temporarily — e.g. after a fatal error — deactivate it or rename its folder via FTP, never delete it (see [docs/RUNBOOK.md](docs/RUNBOOK.md)).
+To take the plugin out of service temporarily — e.g. after a fatal error — deactivate it or rename its folder via FTP, never delete it (see the [Runbook](https://github.com/ke-ma-fi/wc-plz-filter/blob/main/docs/RUNBOOK.md)).
