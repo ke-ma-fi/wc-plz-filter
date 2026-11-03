@@ -48,6 +48,21 @@ final class WC_PLZ_Stats {
         }
     }
 
+    /**
+     * Upgrade path (WC_PLZ_Filter::upgrade()): create/alter the table only
+     * when the schema version changed, otherwise just make sure the cleanup
+     * cron exists.
+     */
+    public static function ensure_installed(): void {
+        if ( get_option( 'wc_plz_db_version' ) !== self::DB_VERSION ) {
+            self::activate();
+            return;
+        }
+        if ( ! wp_next_scheduled( self::CRON_HOOK ) ) {
+            wp_schedule_event( time(), 'daily', self::CRON_HOOK );
+        }
+    }
+
     public static function deactivate(): void {
         wp_clear_scheduled_hook( self::CRON_HOOK );
     }

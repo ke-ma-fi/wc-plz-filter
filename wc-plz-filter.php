@@ -46,8 +46,8 @@ add_action( 'before_woocommerce_init', function () {
     }
 } );
 
-// Lifecycle hooks. Activation and the per-version upgrade routine share
-// WC_PLZ_Filter::install() (see WC_PLZ_Filter::maybe_upgrade()).
+// Lifecycle hooks. Activation runs WC_PLZ_Filter::install(); webhook updates
+// run the more conservative WC_PLZ_Filter::upgrade() via maybe_upgrade().
 register_activation_hook( __FILE__, [ 'WC_PLZ_Filter', 'install' ] );
 
 register_deactivation_hook( __FILE__, function () {
@@ -57,6 +57,7 @@ register_deactivation_hook( __FILE__, function () {
     WC_PLZ_Reminder::deactivate();
 
     require_once WC_PLZ_FILTER_DIR . 'includes/class-wc-plz-updater.php';
+    wp_clear_scheduled_hook( WC_PLZ_Updater::RETRY_HOOK );
 
     foreach ( WC_PLZ_Filter::MANAGE_CAP_ROLES as $role_name ) {
         $role = get_role( $role_name );
