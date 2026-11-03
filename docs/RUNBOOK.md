@@ -5,6 +5,11 @@ Für den Entwickler **und** den Shop-Betreiber (Notfall). Plugin: „DT Woohoo�
 
 > **Betreiber, Seite ist down?** → direkt zu [Notfall: Seite zeigt Fehler](#5-notfall-seite-zeigt-fehler-fatal-error).
 
+Dieses Dokument liegt **nicht** auf dem Shop-Server (`docs/` wird nicht mit ausgeliefert), und der
+Link in der README funktioniert im installierten Plugin nicht. Online-Fassung:
+<https://github.com/ke-ma-fi/wc-plz-filter/blob/main/docs/RUNBOOK.md>. Entwickler: dem Betreiber
+diesen Link bzw. einen Ausdruck von Abschnitt 5 **vorab** geben – im Notfall ist keine Zeit zum Suchen.
+
 ---
 
 ## 1. Wie ein Deploy funktioniert
@@ -38,8 +43,10 @@ Webhook-Antworten:
 | 200 | `{"skipped":true}` | Push auf anderen Branch/Tag oder `ping` – nichts zu tun |
 | 200 | `{"skipped":"duplicate"}` | Diese Zustellung (`X-GitHub-Delivery`) wurde schon erfolgreich verarbeitet |
 | 403 | `invalid_signature` | Secret auf GitHub ≠ Secret im Shop |
-| 409 | `locked` | Es läuft gerade schon ein Update (siehe [Update-Sperre](#7-update-sperre-409)) |
+| 404 | `rest_no_route` | Route existiert nicht: Plugin **inaktiv** oder Ordner umbenannt. Direkt nach einem Deploy fast immer ein Notfall → [Abschnitt 5](#5-notfall-seite-zeigt-fehler-fatal-error) |
+| 409 | `locked` | Es läuft gerade schon ein Update; ein automatischer Nachlauf ist geplant (siehe [Update-Sperre](#7-update-sperre-409)) |
 | 500 | `{"updated":false,…}` | Download/Installation fehlgeschlagen, Details im Update-Log |
+| 500 | `internal_server_error` | PHP-Fatal-Error – Plugin (oder etwas anderes im Shop) ist kaputt → [Abschnitt 5](#5-notfall-seite-zeigt-fehler-fatal-error) |
 | 501 | `not_configured` | Repo nicht eingetragen |
 
 GitHub bricht nach ca. 10 Sekunden ab und zeigt dann „timed out“. Das Update läuft im Shop trotzdem
@@ -93,12 +100,21 @@ Job-Namen nicht umbenennen, sonst greifen die Pflicht-Checks im Ruleset nicht me
 1. Version erhöhen, **an beiden Stellen gleich**:
    - `wc-plz-filter.php` → Kopfzeile `Version:`
    - `includes/class-wc-plz-filter.php` → `const VERSION`
-2. Eintrag in `CHANGELOG.md` (sobald vorhanden) – eine Version pro Release, nur aufwärts.
+2. Eintrag in `CHANGELOG.md` – eine Version pro Release, nur aufwärts.
 3. `bin/check-version.sh origin/main` lokal grün.
 4. PR gegen `main`, CI grün, mergen → Deploy läuft automatisch.
 5. Im Update-Log (bzw. GitHub „Recent Deliveries“) prüfen: neue Version angekommen?
 6. Tag setzen: `git tag -a v<version> -m "v<version>" <merge-commit> && git push origin v<version>`
    (Tag-Pushes lösen kein Update aus, die Antwort ist `skipped`).
+
+**Jeder PR nach `main` braucht einen Versions-Bump** (Check `version`) – auch ein reiner Doku-PR.
+Und jeder Merge nach `main` ist ein Deploy, auch wenn sich nur Doku geändert hat. Doku-Änderungen
+deshalb in `base` sammeln und mit dem nächsten Release nach `main` bringen.
+
+**Nach einem Hotfix direkt nach `main`** (PR von einem Branch ab `main`, z. B. 2.13.0 → 2.13.1):
+`main` zurück nach `base` mergen, **bevor** der nächste Release-PR `base` → `main` geöffnet wird,
+und die Version in `base` über die des Hotfixes heben. Sonst schlägt der Check `version` fehl (bzw.
+der Release-PR hat Konflikte in den Versionszeilen).
 
 ---
 
@@ -107,6 +123,28 @@ Job-Namen nicht umbenennen, sonst greifen die Pflicht-Checks im Ruleset nicht me
 - **Normalfall:** Auf GitHub den PR öffnen → **Revert** → Revert-PR mergen. Das ist ein neuer Push auf
   `main` und deployt den alten Stand. Achtung: Die CI verlangt eine höhere Version – im Revert-PR
   die Version wieder **hochzählen** (nicht auf die alte zurücksetzen).
+- **Ausnahme: Rollback von Release 2.13.0.** 2.13.0 hat `.github/workflows/ci.yml`,
+  `bin/check-version.sh` und `.gitattributes` erst eingeführt. Ein kompletter GitHub-„Revert“ würde sie
+  wieder löschen – dann läuft im Revert-PR keine CI, die Pflicht-Checks melden sich nie, und der PR
+  ist im Ruleset (ohne Bypass) **nicht mergebar**. Deshalb nur den Plugin-Code zurücksetzen,
+  `.github/`, `bin/` und `.gitattributes` bleiben:
+
+  ```sh
+  git fetch origin
+  git switch -c revert-2.13.0 origin/main
+  # Plugin-Code auf den Stand vor 2.13.0 (letzter main-Commit davor: 31e9aa7):
+  git restore --source=31e9aa7 --staged --worktree -- assets includes uninstall.php wc-plz-filter.php
+  # Danach die Version in wc-plz-filter.php (Header) und includes/class-wc-plz-filter.php
+  # (const VERSION) auf eine Version > 2.13.0 setzen, z. B. 2.13.1.
+  bin/check-version.sh origin/main
+  git commit -am "Rollback: Plugin-Code vor 2.13.0, als v2.13.1"
+  git push -u origin revert-2.13.0
+  ```
+
+  Dann PR `revert-2.13.0` → `main`, CI abwarten, mergen.
+- **Notbremse Ruleset:** Hängt ein dringender PR an den Pflicht-Checks fest, kann der **Repo-Owner**
+  das Ruleset vorübergehend abschalten: Settings → **Rules → Rulesets** → `main schützen` →
+  Enforcement status **Disabled** → speichern. Nach dem Merge sofort wieder auf **Active** stellen.
 - **Webhook kam nicht an / ist fehlgeschlagen:** Im Tab „Updates“ auf **„Jetzt aktualisieren“** klicken
   (lädt den aktuellen Stand des eingestellten Branches) oder auf GitHub die Zustellung „Redeliver“.
 
@@ -126,30 +164,49 @@ GitHub kommt dann nicht von selbst an.
 - **Variante B – FTP / Datei-Manager des Hosters:** Ordner `wp-content/plugins/wc-plz-filter`
   umbenennen, z. B. in `wc-plz-filter-AUS`. WordPress deaktiviert das Plugin dann automatisch.
   (Falls der Ordner anders heißt: es ist der Ordner mit der Datei `wc-plz-filter.php`.)
+  Den **ursprünglichen Ordnernamen notieren** – der Entwickler braucht ihn für das Fix-ZIP.
 
 **Niemals** in WordPress auf Plugins → DT Woohoo → **„Löschen“** klicken: Dabei läuft
 `uninstall.php` und löscht alle Einstellungen, Statistiken und Logs des Plugins.
 
-Danach den Entwickler informieren (Uhrzeit, Fehlermeldung aus der Mail, Screenshot).
+Danach den Entwickler informieren (Uhrzeit, Fehlermeldung aus der Mail, Screenshot, **Name des
+Plugin-Ordners**).
 
 **Schritt 2 – Fix bereitstellen (Entwickler):** Fix bzw. Revert per PR nach `main` mergen (siehe
-Rollback). Da der Webhook gerade tot ist, zusätzlich ein Installations-ZIP mit dem richtigen
-Ordnernamen bauen und dem Betreiber schicken:
+Rollback). Da der Webhook gerade tot ist, zusätzlich ein Installations-ZIP bauen und dem Betreiber
+schicken. Der Ordner im ZIP muss **genau so heißen wie der Plugin-Ordner auf dem Server** – das ist
+nicht unbedingt `wc-plz-filter`, denn der Updater behält immer den Namen des aktiven Ordners bei
+(`fix_source_dir()`). Den echten Namen beim Betreiber erfragen (am besten schon vorab, solange
+alles läuft):
+
+- per FTP / Datei-Manager: der Ordner unter `wp-content/plugins/`, der `wc-plz-filter.php` enthält
+  (nach Variante B: der Name **vor** dem Umbenennen), oder
+- in der Plugin-Liste mit der Maus über „Deaktivieren“ bzw. „Aktivieren“ bei „DT Woohoo“ fahren:
+  der Link enthält `plugin=<ordner>%2Fwc-plz-filter.php`.
 
 ```sh
-git fetch origin && git archive --prefix=wc-plz-filter/ -o wc-plz-filter.zip origin/main
+git fetch origin && git archive --prefix=<ordner>/ -o <ordner>.zip origin/main
+# Normalfall: git archive --prefix=wc-plz-filter/ -o wc-plz-filter.zip origin/main
 ```
 
-(Nicht das „Download ZIP“ von GitHub verwenden: Dessen Ordner heißt `wc-plz-filter-main` und würde
-als zweites Plugin installiert.)
+Stimmt der Ordnername nicht, installiert WordPress das ZIP als **zweites Plugin**, statt
+„Aktuelle Version mit der hochgeladenen ersetzen“ anzubieten. (Aus demselben Grund nicht das
+„Download ZIP“ von GitHub verwenden: Dessen Ordner heißt `wc-plz-filter-main`.)
 
 **Schritt 3 – Fix einspielen und wieder aktivieren (Betreiber):**
 
-- Plugins → Installieren → **Plugin hochladen** → `wc-plz-filter.zip` → „Jetzt installieren“.
-  - Nach Variante A fragt WordPress, ob die vorhandene Version ersetzt werden soll → **ersetzen**.
-  - Nach Variante B wird ein neuer Ordner `wc-plz-filter` angelegt (der umbenannte bleibt liegen).
+- Plugins → **Neues Plugin hinzufügen** → **Plugin hochladen** → ZIP vom Entwickler auswählen →
+  „Jetzt installieren“.
+  - Nach Variante A meldet WordPress, dass das Plugin schon installiert ist → **„Aktuelle Version
+    mit der hochgeladenen ersetzen“**.
+  - Nach Variante B wird ein neuer Ordner mit dem ursprünglichen Namen angelegt (der umbenannte
+    `…-AUS` bleibt liegen).
 - Plugins → „DT Woohoo“ **aktivieren**. Erst ab jetzt funktioniert der Webhook wieder.
   Die Einstellungen bleiben erhalten (sie liegen in der Datenbank, nicht im Ordner).
+  - Nach Variante B stehen zwei „DT Woohoo“ in der Liste: das mit der **neuen, höheren
+    Versionsnummer** aktivieren (Ordner mit dem ursprünglichen Namen, nicht `…-AUS`).
+  - Steht das neue Plugin schon als **aktiv** da, ist nichts mehr zu tun: WordPress hatte es nach dem
+    Umbenennen noch als aktiv geführt, der hochgeladene Fix ist damit sofort live.
 - Im Tab „Updates“ prüfen, dass die erwartete Version angezeigt wird.
 - Nach Variante B den alten Ordner `wc-plz-filter-AUS` **nur per FTP/Datei-Manager** löschen. In
   der Plugin-Liste erscheint er als zweites, inaktives „DT Woohoo“ – dort **nicht** auf „Löschen“
@@ -188,6 +245,13 @@ werden weitere Updates abgewiesen:
 Das verhindert, dass zwei Installationen (z. B. Webhook + Klick, oder zwei schnelle Pushes)
 gleichzeitig in denselben Plugin-Ordner schreiben. Die Sperre wird nach jedem Lauf freigegeben,
 auch bei Fehlern.
+
+**Automatischer Nachlauf:** GitHub stellt einen mit 409 abgewiesenen Webhook nicht von selbst erneut
+zu. Deshalb plant das Plugin bei einem 409 per WP-Cron einen einmaligen Nachlauf (Hook
+`wc_plz_updater_retry`) in ca. **60 Sekunden**. Ist die Sperre dann noch belegt, wird er erneut um
+60 Sekunden verschoben – ohne Einträge im Update-Log, solange er wartet. Sobald die Sperre frei ist,
+installiert er den aktuellen Stand des eingestellten Branches. Ein zweiter, schneller Push geht also
+nicht verloren. (WP-Cron läuft nur bei Seitenaufrufen; ohne Besucher kann es etwas länger dauern.)
 
 **Hängt die Sperre** (Lauf ist abgestürzt): einfach **10 Minuten warten** – danach gilt sie als
 verwaist und das nächste Update übernimmt sie automatisch. Dann „Jetzt aktualisieren“ oder auf

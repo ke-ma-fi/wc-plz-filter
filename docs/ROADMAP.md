@@ -1,7 +1,7 @@
 # Roadmap DT Woohoo
 
 Stand: 2026-10-22 (Review von v2.12.9), fortgeschrieben 2026-11-03 für Release 2.13.0. Aufwand: **S** ≈ < ½ Tag, **M** ≈ 1–2 Tage, **L** ≈ mehrere Tage.
-Erledigte Punkte abhaken und mit Commit/PR verlinken. A–C sind mit 2.13.0 erledigt (PRs #17–#21 + Doku-PR);
+Erledigte Punkte abhaken und mit Commit/PR verlinken. A–C sind mit 2.13.0 erledigt (PRs #17–#22);
 was danach noch offen ist, steht unter [Offen nach 2.13.0](#offen-nach-2130).
 
 ## A – Deploy & Betrieb absichern
@@ -39,15 +39,19 @@ was danach noch offen ist, steht unter [Offen nach 2.13.0](#offen-nach-2130).
 - [x] **B1 Packliste** (M) – erledigt (#18) – `class-woohoo-po-aggregator.php`: Erstattungen abziehen
   (`get_qty_refunded_for_item`), gemischte Einheiten pro Produkt nicht falsch summieren, Formate
   „500 gr“, „1 Liter“, „1.000 g“ erkennen, Dezimalmengen nicht abschneiden (`%d`).
-- [x] **B2 Upgrade-Routine** (S) – erledigt (#20) – `maybe_upgrade()` bei geänderter Version: idempotent Tabelle,
-  Crons und Capabilities sicherstellen. Hintergrund: Webhook-Updates führen den Aktivierungs-Hook nie
-  aus; was künftig dort ergänzt wird, käme sonst nie in Produktion an.
+- [x] **B2 Upgrade-Routine** (S) – erledigt (#20, angepasst in #24) – `maybe_upgrade()`
+  einmal pro Version. Hintergrund: Webhook-Updates führen den Aktivierungs-Hook nie aus. Seit den
+  #24 ruft sie nicht mehr `install()` auf, sondern `WC_PLZ_Filter::upgrade()`: `dbDelta` nur
+  bei geänderter `wc_plz_db_version`, sonst nur Cleanup-Cron sicherstellen; im Dev-Modus einen
+  verirrten Reminder-Cron entfernen, ihn aber **nie** einplanen; Rollen-Capabilities bleiben
+  unangetastet. `install()` läuft nur noch bei Aktivierung. Was künftig bei Updates nötig ist, muss
+  ausdrücklich in `upgrade()` ergänzt werden.
 - [x] **B3 Kompatibilitäts-Angaben** (S) – erledigt (#20) – HPOS-Erklärung (`FeaturesUtil::declare_compatibility`),
   Header „Requires at least“ / „WC tested up to“, Plugin-Beschreibung („drei Modi“) aktualisieren.
   Umgesetzt: HPOS (`custom_order_tables`; Shop läuft weiter auf Posts-Speicher, `cart_checkout_blocks`
   bewusst nicht erklärt), `Requires at least: 6.0`, neue Beschreibung. „WC tested up to“ nicht gesetzt.
 - [x] **B4 Kleine Frontend-Fixes, beim nächsten Frontend-Eingriff mitnehmen** (S) – erledigt (#19)
-  - Escape-Listener nur reagieren lassen, wenn das PLZ-Popup offen ist (`plz-popup.js:591`) –
+  - Escape-Listener nur reagieren lassen, wenn das PLZ-Popup offen ist (`plz-popup.js`, `isPopupOpen()`) –
     aktuell setzt Escape *irgendwo* auf der Seite „skipped“, wenn noch kein Modus gewählt ist.
   - ID- und `:has()`-Selektoren als zwei getrennte CSS-Regeln (JS + Inline-Head-Script),
     damit ältere Browser nicht die ganze Regel verwerfen.
@@ -57,7 +61,7 @@ was danach noch offen ist, steht unter [Offen nach 2.13.0](#offen-nach-2130).
 
 ## C – Doku & Arbeitsweise
 
-- [x] **C1 Doku an Code angleichen** (S) – erledigt (Doku-PR) – bekannte Abweichungen:
+- [x] **C1 Doku an Code angleichen** (S) – erledigt (#22) – bekannte Abweichungen:
   - README: Cookie-Laufzeit 30 → **180** Tage; Zonen-Cache 1 h → **12 h**; Popup erscheint standardmäßig
     erst nach dem ersten Warenkorb-Artikel (`popup_trigger`); Entwickler-Reset löscht nur das Cookie;
     Merkliste speichert doch Server-Zähler (`wc-plz/v1/merkliste-stats`); Icon ist ein Herz;
@@ -68,12 +72,13 @@ was danach noch offen ist, steht unter [Offen nach 2.13.0](#offen-nach-2130).
   - `NAMING.md`: `fix_source_dir` nutzt den aktiven Ordnernamen; Merkliste/Cart-Indicator als
     Ausnahme von der `Woohoo_*`-Regel vermerken.
   - `notes/settings-capability-filter.md`: Zeilenverweise veraltet (mit C4/#17 neu geschrieben).
-  - Admin-Label „Notizblock-Icon“ → Herz: PHP-Änderung, nicht im Doku-PR → „Offen nach 2.13.0“.
-- [x] **C2 `CHANGELOG.md` + Versionsregel** (S) – erledigt (Doku-PR) – Version nur aufwärts, eine pro Release, Tag pro Release.
-- [x] **C3 `CLAUDE.md`** (S) – erledigt (Doku-PR) – Namensregeln, Versions-Bump bei Asset-Änderungen, jede `register_setting`
-  braucht `option_page_capability_*`, keine Direkt-Pushes auf `main`, UI-Texte deutsch.
+  - Admin-Label „Notizblock-Icon“ → Herz: PHP-Änderung, nicht in #22 → „Offen nach 2.13.0“.
+- [x] **C2 `CHANGELOG.md` + Versionsregel** (S) – erledigt (#22) – Version nur aufwärts, eine pro Release, Tag pro Release.
+- [x] **C3 `CLAUDE.md`** (S) – erledigt (#22) – Namensregeln, Versions-Bump bei Asset-Änderungen, jede
+  `register_setting`-Gruppe in `WC_PLZ_Filter::settings_group_caps()` eintragen, keine Direkt-Pushes
+  auf `main`, UI-Texte deutsch.
 - [x] **C4 Settings-Capability-Filter zentralisieren** (S–M) – erledigt (#17) – Plan in `notes/settings-capability-filter.md`.
-- [x] **C5 Aufräumen** (S) – erledigt (Doku-PR) – `docs/demos/` (veraltet), `notes/badge-toast.md` (überholt),
+- [x] **C5 Aufräumen** (S) – erledigt (#22) – `docs/demos/` (veraltet), `notes/badge-toast.md` (überholt),
   `notes/to-dos.md` (offene Punkte hierher übernehmen).
 
 ## D – Irgendwann
@@ -81,7 +86,7 @@ was danach noch offen ist, steht unter [Offen nach 2.13.0](#offen-nach-2130).
 - [ ] **D1 Barrierefreiheit** (M) – sichtbarer Fokus statt `outline:none`, Popup auf kleinen Displays
   scrollbar, Fokus-Falle im Popup, Touch-Ziele ≥ 44 px, Kontraste, Badge-Status für Screenreader.
 - [ ] **D2 Tests** (M) – PHPUnit für PLZ-Matching (aus `is_local()` herauslösen) und Packlisten-Einheiten.
-- [ ] **D3 Modulmuster** (L) – `class-wc-plz-filter.php` (1243 Zeilen) in Zonen / Sichtbarkeit /
+- [ ] **D3 Modulmuster** (L) – `class-wc-plz-filter.php` (rund 1400 Zeilen, Stand 2.13.0) in Zonen / Sichtbarkeit /
   Warenkorb-Regeln / Popup / Admin aufteilen. Erst nach D2.
 - [ ] **D4 Merkliste-`init`-Ping entfernen**, sobald die Einführungszahlen ausgewertet sind.
 - [ ] **D5 Produktideen**
@@ -123,7 +128,23 @@ was danach noch offen ist, steht unter [Offen nach 2.13.0](#offen-nach-2130).
   (`reviews/pr-12-mailer-review.md` Punkt 2).
 - [ ] **Doppelte Logs Zahlungs-Erinnerung** (S) – Reminder-Log auf Order-Bezug/Resend reduzieren
   oder bewusst so lassen (PR-12 Punkt 3); optional `reference_url` im Mail-Log (Punkt 5).
-- [ ] **Toter Code** (S) – `WC_PLZ_Stats::maybe_create_table()` wird nirgends aufgerufen; seit B2
-  erledigt `install()` das. Entfernen.
+- [ ] **Toter Code** (S) – `WC_PLZ_Stats::maybe_create_table()` wird nirgends aufgerufen; die Tabelle
+  legen `WC_PLZ_Stats::activate()` (Aktivierung) bzw. `WC_PLZ_Filter::upgrade()` (bei geänderter
+  `wc_plz_db_version`) an. Entfernen.
+- [ ] **Zahlungs-Erinnerung ohne Altersgrenze nach unten** (S) – `get_pending_orders()` holt alle
+  `pending`-Bestellungen, die älter als die Schwelle sind (bis 200), egal wie alt. Beim Live-Schalten
+  (Dev-Modus aus → Cron wird eingeplant) bekämen also auch wochen- oder monatealte, nie bezahlte
+  Bestellungen sofort eine Erinnerung. Seit #24 plant der Upgrade-Pfad den Reminder-Cron
+  nicht mehr ein, ein Deploy schaltet also nicht versehentlich live – das Risiko besteht aber beim
+  bewussten Live-Schalten weiter. Vorschlag: Höchstalter (z. B. 7 Tage) als Einstellung bzw. zweite
+  `date_created`-Grenze; bis dahin vor dem Live-Schalten alte `pending`-Bestellungen stornieren.
+- [x] **Webhook während laufendem Update** – erledigt (#24) – ein zweiter Push
+  bekam 409 `locked`, und GitHub stellt nicht erneut zu; der neue Stand kam erst mit dem nächsten
+  Push oder „Redeliver“. Jetzt plant ein 409 per WP-Cron einen einmaligen Nachlauf
+  (`wc_plz_updater_retry`, ~1 min später, verschiebt sich, solange die Sperre belegt ist; RUNBOOK
+  Abschnitt 7).
+- [ ] **`maybe_upgrade()` nicht atomar** (–) – Lesen und Schreiben von `wc_plz_upgraded_version` sind
+  zwei Schritte; gleichzeitige Requests direkt nach einem Deploy können die Upgrade-Routine mehrfach
+  ausführen. Harmlos, weil idempotent – nur festgehalten, kein Handlungsbedarf.
 - [ ] **PLZ-Statistik-API** (S) – `total_events` zählt die ganze Tabelle, nicht den abgefragten
   Zeitraum (dokumentiert in `plz-statistics.md`); ggf. um eine Periodensumme ergänzen.
