@@ -10,12 +10,12 @@ user-facing display name and admin UI. That rebrand is deliberately
 |---|---|
 | Plugin Name header, admin menu label, tab labels, README | Renamed to "DT Woohoo" |
 | Plugin folder / main file (`wc-plz-filter/wc-plz-filter.php`) | **Unchanged** |
-| PHP classes `WC_PLZ_Filter`, `WC_PLZ_Stats`, `WC_PLZ_Updater`, `WC_PLZ_Reminder` | **Unchanged** |
+| PHP classes `WC_PLZ_Filter`, `WC_PLZ_Stats`, `WC_PLZ_Updater`, `WC_PLZ_Reminder` (and the later `WC_PLZ_Merkliste`, `WC_PLZ_Cart_Indicator`, see below) | **Unchanged** |
 | Constants (`MANAGE_CAP`, `OPT`, `CACHE`, `COOKIE`, ...) | **Unchanged** |
 | WordPress capability (`manage_plz_filter`) | **Unchanged** |
 | Option keys / DB table (`wc_plz_filter_v2`, `wp_wc_plz_events`, ...) | **Unchanged** |
 | AJAX actions (`wc_plz_check`, `wc_plz_save`, `wc_plz_hidden_ids`) | **Unchanged** |
-| REST namespace (`wc-plz/v1/*`) | **Unchanged** |
+| REST namespace (`wc-plz/v1/*`: `nonce`, `stats`, `webhook`, `merkliste-stats`) | **Unchanged** |
 | GitHub repo / auto-updater zip-folder matching | **Unchanged** |
 
 ## Why leave the legacy naming alone
@@ -33,7 +33,10 @@ not free:
 - **AJAX action / REST namespace rename** — breaks the already-enqueued
   front-end JS for any visitor with a cached page until they reload, and
   breaks the GitHub webhook URL and any external REST API consumer (e.g. a
-  saved WooCommerce API key script hitting `/wc-plz/v1/stats`).
+  saved WooCommerce API key script hitting `/wc-plz/v1/stats`). Note that
+  WooCommerce API-key authentication only applies to REST namespaces starting
+  with `wc/` or `wc-`; `wc-plz/v1` gets it for free, a `woohoo/v1` namespace
+  would not.
 
 None of that buys anything functionally — it would just make the code say a
 different word. So it stays as-is until there's a concrete reason to pay that
@@ -57,6 +60,24 @@ Rule of thumb going forward:
   replaced, not just extended)? That's the point where renaming it to
   `Woohoo_*` alongside the rewrite is nearly free — fold it in then.
 
+New code following this convention so far: `Woohoo_Admin_Page`,
+`Woohoo_Module_*`, `Woohoo_Mailer` (option `woohoo_mail_log`),
+`Woohoo_Product_Overview` and `Woohoo_PO_Aggregator` (options
+`woohoo_product_overview_*`, REST namespace `woohoo/v1`, cookie
+`woohoo_po_auth`).
+
+### Accepted exception: Merkliste and Cart-Indicator
+
+`WC_PLZ_Merkliste` and `WC_PLZ_Cart_Indicator` were added after the rebrand
+but still use the legacy naming (`class-wc-plz-*.php`, options
+`wc_plz_merkliste_enabled` / `wc_plz_merkliste_stats` /
+`wc_plz_cart_indicator_enabled`, REST route `wc-plz/v1/merkliste-stats`, JS/CSS
+handles `wc-plz-*`). They are tightly coupled to the legacy core (badge widget
+group, `wcPlzTiles` helpers, `--wc-plz-color`), and they are live in
+production with stored options, so renaming them now would cost a migration
+for no functional gain. This is accepted as-is; don't use it as precedent
+for new modules.
+
 ## What a full internal rename would require, if it's ever justified
 
 Only worth doing if this plugin is ever open-sourced / distributed to other
@@ -73,7 +94,8 @@ day comes, the full rename touches:
 3. **Option key migration** — copy `wc_plz_filter_v2`, `wc_plz_reminder`,
    `wc_plz_updater_repo`, `wc_plz_updater_secret`, `wc_plz_hidden_version`,
    etc. to their new key names on first load of the renamed plugin, and only
-   then delete the old keys.
+   then delete the old keys. `uninstall.php` lists every key as a literal
+   string and must be updated too.
 4. **DB table** — either `RENAME TABLE wp_wc_plz_events TO wp_woohoo_events`
    or keep the physical table name and only change the class-level constant
    (cheaper, no data migration needed — recommended).
@@ -81,10 +103,16 @@ day comes, the full rename touches:
    `wc_plz_hidden_ids` and `wc-plz/v1/*`, and bump the enqueued JS/CSS
    versions so caches don't serve stale action names against a renamed
    server-side handler.
-6. **GitHub webhook + updater** — if the GitHub repo itself is renamed,
-   `WC_PLZ_Updater::fix_source_dir()`'s `wc-plz-filter-main/` folder-matching
-   logic and the webhook URL registered on GitHub both need updating in
-   lockstep, or auto-update silently breaks.
+6. **GitHub webhook + updater** — `WC_PLZ_Updater::fix_source_dir()` does not
+   match folder names: it renames whatever folder the downloaded archive
+   extracts to into the basename of the *currently active* plugin folder
+   (`basename( WC_PLZ_FILTER_DIR )`), so the update always overwrites the
+   running copy. A folder rename (step 1) therefore cannot be shipped through
+   the updater at all — it needs a manual install. If the GitHub repo itself
+   is renamed, the `wc_plz_updater_repo` option (Updates tab) and the webhook
+   on GitHub must be updated in lockstep, and if the REST namespace changes
+   (step 5), so must the webhook URL (`/wp-json/wc-plz/v1/webhook`), or
+   auto-update silently breaks.
 7. **Class/constant rename** — mechanical `WC_PLZ_*` → `Woohoo_*` pass across
    every file, including filenames (`class-wc-plz-*.php` → `class-woohoo-*.php`)
    for consistency.
