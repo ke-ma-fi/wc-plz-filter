@@ -1,4 +1,4 @@
-# Settings Capability Filter: Recurring 403 on Save
+# Settings Capability Filter: Central Registry
 
 Every `register_setting()` group in this plugin needs a matching
 `option_page_capability_{$group}` filter, or WordPress's `options.php`
@@ -9,53 +9,70 @@ fine — the tab itself is gated by `MANAGE_CAP` — but gets rejected by
 `options.php` on save, which surfaces as a 403 / "Sorry, you are not allowed
 to modify this page."
 
-This has been missed more than once when adding a new settings group (most
-recently `wc_plz_widgets_group`, shared by `WC_PLZ_Merkliste` and
-`WC_PLZ_Cart_Indicator` — see [class-wc-plz-merkliste.php](../../includes/class-wc-plz-merkliste.php)
-and [class-wc-plz-cart-indicator.php](../../includes/class-wc-plz-cart-indicator.php)).
-Every group currently carries its own copy of the filter closure:
+This used to be solved with one filter closure per module, and it was
+forgotten more than once when a new group was added. It is now centralized
+(roadmap item C4).
 
-- `wc_plz_filter_group` — [class-wc-plz-filter.php:922](../../includes/class-wc-plz-filter.php#L922)
-- `wc_plz_widgets_group` — in both `WC_PLZ_Merkliste::register_setting()` and `WC_PLZ_Cart_Indicator::register_setting()`
-- `wc_plz_reminder_group` — [class-wc-plz-reminder.php:84](../../includes/class-wc-plz-reminder.php#L84)
-- `woohoo_product_overview_group` — [class-woohoo-product-overview.php:133-135](../../includes/class-woohoo-product-overview.php#L133-L135)
-- `wc_plz_updater_group` — [class-wc-plz-updater.php:269](../../includes/class-wc-plz-updater.php#L269) (uses a *different* capability, `WC_PLZ_Updater::MANAGE_UPDATE_CAP`, not `MANAGE_CAP`)
+## Where it lives
 
-Because the fix is duplicated per-file, it's easy for a brand-new module to
-add `register_setting()` and simply forget the accompanying filter — nothing
-fails loudly until someone without `manage_options` tries to save.
+[`includes/class-wc-plz-filter.php`](../../includes/class-wc-plz-filter.php):
 
-## Planned fix (not yet implemented)
+- `WC_PLZ_Filter::settings_group_caps()` — the registry, a plain
+  `group => capability` array.
+- `WC_PLZ_Filter::register_settings_capabilities()` — loops over the
+  registry and adds one `option_page_capability_{$group}` filter per group.
+  Hooked on `admin_init` in `WC_PLZ_Filter::init()`.
 
-Centralize into one list instead of one closure per file. Add a single
-registry in `WC_PLZ_Filter` (or a small dedicated helper class) mapping each
-settings group to its required capability, and apply all of them from one
-`admin_init` hook:
+No module adds its own `option_page_capability_*` filter any more; each
+`register_setting()` call carries a short comment pointing to the registry.
 
-```php
-const SETTINGS_GROUP_CAPS = [
-    'wc_plz_filter_group'           => self::MANAGE_CAP,
-    'wc_plz_widgets_group'          => self::MANAGE_CAP,
-    'wc_plz_reminder_group'         => self::MANAGE_CAP,
-    'woohoo_product_overview_group' => self::MANAGE_CAP,
-    'wc_plz_updater_group'          => WC_PLZ_Updater::MANAGE_UPDATE_CAP,
-];
+| Group | Registered in | Who can save |
+|---|---|---|
+| `wc_plz_filter_group` | `WC_PLZ_Filter` | `manage_options` OR `MANAGE_CAP` |
+| `wc_plz_widgets_group` | `WC_PLZ_Merkliste`, `WC_PLZ_Cart_Indicator` | `manage_options` OR `MANAGE_CAP` |
+| `wc_plz_reminder_group` | `WC_PLZ_Reminder` | `manage_options` OR `MANAGE_CAP` |
+| `woohoo_product_overview_group` | `Woohoo_Product_Overview` | `manage_options` OR `MANAGE_CAP` |
+| `wc_plz_updater_group` | `WC_PLZ_Updater` | `WC_PLZ_Updater::MANAGE_UPDATE_CAP` only (strict) |
 
-public function register_capability_filters(): void {
-    foreach ( self::SETTINGS_GROUP_CAPS as $group => $cap ) {
-        add_filter( "option_page_capability_{$group}", function () use ( $cap ) {
-            return current_user_can( 'manage_options' ) ? 'manage_options' : $cap;
-        } );
-    }
-}
-```
+Rule: a group mapped to `MANAGE_CAP` gets the `manage_options` shortcut, so
+an administrator whose role lost `MANAGE_CAP` (e.g. the activation hook
+never re-ran) is not locked out. Any other capability is applied strictly —
+the updater group stays limited to administrators plus explicitly granted
+users (`manage_woohoo_updates`).
 
-Then remove the per-module `add_filter( 'option_page_capability_...' )`
-calls and have every module's `register_setting()` add its group name to
-this one array instead. A new settings group failing to save because its
-entry is missing from `SETTINGS_GROUP_CAPS` is a one-line, easy-to-spot
-fix in one obvious place, rather than a pattern that has to be
-independently rediscovered per file.
+## Adding a new settings group
+
+1. Call `register_setting( 'my_group', ... )` on `admin_init` as usual, with
+   a one-line comment pointing to `WC_PLZ_Filter::settings_group_caps()`.
+2. Add `'my_group' => self::MANAGE_CAP,` (or a stricter capability) to
+   `settings_group_caps()`. Nothing else.
+
+A group missing from the registry shows up as the 403 above for
+`shop_manager` while administrators can still save — check the registry
+first.
+
+## Why a method and not a class constant
+
+A class constant such as
+`const SETTINGS_GROUP_CAPS = [ ..., 'wc_plz_updater_group' => WC_PLZ_Updater::MANAGE_UPDATE_CAP ];`
+is resolved by PHP when `WC_PLZ_Filter` is first instantiated, which happens
+at plugin load (`WC_PLZ_Filter::instance()` in `wc-plz-filter.php`) — before
+`class-wc-plz-updater.php` is required in `init()`. That would be a fatal
+"Class not found" on every request. The method is only evaluated on
+`admin_init`, after `init()` (on `plugins_loaded`) has loaded every module.
+
+## Load order
+
+`register_settings_capabilities()` is registered in `WC_PLZ_Filter::init()`
+next to `register_settings()`, outside the `is_admin() && ! wp_doing_ajax()`
+block that loads the `Woohoo_Admin_Page` / `Woohoo_Module_*` classes. It
+therefore does not depend on the admin module classes and runs on every
+request that fires `admin_init`: normal wp-admin pages, `admin-post.php`,
+`admin-ajax.php`, and in particular the `options.php` POST that saves a
+settings form (`options.php` reads the filter after `admin_init`). Frontend
+and REST requests don't fire `admin_init`, so nothing is registered there —
+they don't use `options.php` either. If WooCommerce is inactive, `init()`
+returns early and neither the groups nor their filters are registered.
 
 ### Rejected alternative: auto-detect by naming convention
 
@@ -65,8 +82,15 @@ name via `current_filter()`, then `add_filter()` that specific dynamic hook
 on the fly (this works because `all` callbacks run *before* the named
 filter's own callback list is read, per `apply_filters()` in
 `wp-includes/plugin.php`). This would need zero registration for future
-modules, but was rejected for now: it relies on a non-obvious ordering
-quirk of the `all` hook, and the updater group's different capability
+modules, but was rejected: it relies on a non-obvious ordering quirk of the
+`all` hook, and the updater group's different capability
 (`MANAGE_UPDATE_CAP`) means even the auto-detect version still needs a
 per-prefix/per-group capability rule, not a single constant — most of the
 complexity of the explicit registry, with less readable code.
+
+### Rejected alternative: `get_settings_groups()` on `Woohoo_Module`
+
+The admin module classes are only loaded when `is_admin() && ! wp_doing_ajax()`,
+and the groups are registered by the feature classes, not the modules.
+Keeping the registry in `WC_PLZ_Filter` avoids coupling the save path to the
+admin-page UI layer.

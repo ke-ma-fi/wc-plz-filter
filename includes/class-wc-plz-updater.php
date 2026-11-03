@@ -266,8 +266,8 @@ final class WC_PLZ_Updater {
     // ── Settings registration ─────────────────────────────────────────────
 
     public function register_settings(): void {
-        add_filter( 'option_page_capability_wc_plz_updater_group', fn() => self::MANAGE_UPDATE_CAP );
-
+        // Save capability for this group (strict MANAGE_UPDATE_CAP): see
+        // WC_PLZ_Filter::settings_group_caps().
         register_setting( 'wc_plz_updater_group', self::OPT_REPO, [
             'type'              => 'string',
             'sanitize_callback' => function ( $value ) {
