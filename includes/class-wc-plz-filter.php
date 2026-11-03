@@ -12,6 +12,12 @@ final class WC_PLZ_Filter {
     const HIDDEN_VERSION  = 'wc_plz_hidden_version';
     const MANAGE_CAP      = 'manage_plz_filter';
 
+    /** Roles that get MANAGE_CAP on install/upgrade and lose it on deactivation. */
+    const MANAGE_CAP_ROLES = [ 'administrator', 'shop_manager' ];
+
+    /** Plugin VERSION for which install() last ran via maybe_upgrade(). */
+    const OPT_UPGRADED_VERSION = 'wc_plz_upgraded_version';
+
     private ?array $settings_cache = null;
     private ?WC_PLZ_Stats   $stats   = null;
     private ?WC_PLZ_Updater $updater = null;
@@ -44,6 +50,60 @@ final class WC_PLZ_Filter {
         if ( function_exists( 'rocket_clean_domain' ) ) {
             rocket_clean_domain();
         }
+    }
+
+    /**
+     * Sets up everything the plugin expects to exist: stats table, cron
+     * events and capabilities. Idempotent - safe to run any number of times.
+     *
+     * Called from the activation hook and from maybe_upgrade(). The latter is
+     * what matters in production: the webhook updater replaces the files in
+     * place and never re-fires register_activation_hook, so anything added
+     * here later only reaches the live shop through maybe_upgrade().
+     */
+    public static function install(): void {
+        require_once WC_PLZ_FILTER_DIR . 'includes/class-wc-plz-stats.php';
+        WC_PLZ_Stats::activate();
+
+        require_once WC_PLZ_FILTER_DIR . 'includes/class-wc-plz-reminder.php';
+        WC_PLZ_Reminder::activate();
+
+        require_once WC_PLZ_FILTER_DIR . 'includes/class-wc-plz-updater.php';
+
+        // Capability an Rollen vergeben, die standardmäßig Zugriff haben sollen.
+        // Einzelne Benutzer können zusätzlich über "Benutzer > Bearbeiten" berechtigt werden.
+        foreach ( self::MANAGE_CAP_ROLES as $role_name ) {
+            $role = get_role( $role_name );
+            if ( $role ) {
+                $role->add_cap( self::MANAGE_CAP );
+            }
+        }
+
+        // Auto-Update-Verwaltung ist strenger als die allgemeine Plugin-Verwaltung:
+        // nur Administratoren, kein shop_manager (siehe manage_woohoo_updates).
+        $admin_role = get_role( 'administrator' );
+        if ( $admin_role ) {
+            $admin_role->add_cap( WC_PLZ_Updater::MANAGE_UPDATE_CAP );
+        }
+    }
+
+    /**
+     * Runs install() once per plugin VERSION. Hooked on every request
+     * (frontend included - the shop has no regular admin logins), so the
+     * common path is a single autoloaded option read.
+     *
+     * The version is recorded before install() runs, mirroring
+     * maybe_bust_rocket_cache(): right after a deploy many requests arrive
+     * at once, and this keeps them from all running dbDelta()/cron
+     * scheduling in parallel. Everything in install() is idempotent, so the
+     * worst case of an interrupted run is a retry on the next version.
+     */
+    public function maybe_upgrade(): void {
+        if ( get_option( self::OPT_UPGRADED_VERSION, '' ) === self::VERSION ) {
+            return;
+        }
+        update_option( self::OPT_UPGRADED_VERSION, self::VERSION, true );
+        self::install();
     }
 
     public function init(): void {
@@ -97,6 +157,11 @@ final class WC_PLZ_Filter {
             $admin_page->register_module( new Woohoo_Module_Mailer( $mailer ) );
             $admin_page->register_module( new Woohoo_Module_Widgets() );
         }
+
+        // Priority 5: before anything on init that might rely on the table,
+        // crons or capabilities (same slot WooCommerce uses for its own
+        // version check).
+        add_action( 'init', [ $this, 'maybe_upgrade' ], 5 );
 
         add_action( 'admin_init', [ $this, 'register_settings' ] );
         add_action( 'admin_init', [ $this, 'handle_admin_reset' ] );

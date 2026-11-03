@@ -25,6 +25,7 @@ delete_option( 'wc_plz_filter' );                 // legacy
 delete_option( 'wc_plz_filter_settings' );        // legacy
 delete_option( 'wc_plz_hidden_version' );         // WC_PLZ_Filter::HIDDEN_VERSION
 delete_option( 'wc_plz_rocket_busted' );          // WC_PLZ_Filter::maybe_bust_rocket_cache()
+delete_option( 'wc_plz_upgraded_version' );       // WC_PLZ_Filter::OPT_UPGRADED_VERSION
 delete_option( 'wc_plz_db_version' );             // WC_PLZ_Stats (table schema version)
 delete_option( 'wc_plz_stats_epoch' );            // WC_PLZ_Stats::cache_epoch()
 delete_option( 'wc_plz_stats_cleanup' );          // WC_PLZ_Stats::OPT_CLEANUP
