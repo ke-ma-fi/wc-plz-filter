@@ -12,9 +12,11 @@ was danach noch offen ist, steht unter [Offen nach 2.13.0](#offen-nach-2130).
   und Version erhöht). Ruleset ohne Admin-Bypass. Ein eigener `release`-Branch lohnt erst mit Staging-Seite.
   CI und Anleitung sind da; das Ruleset selbst muss der Repo-Owner noch anlegen (siehe unten).
 - [x] **A2 Updater härten** (S) – erledigt (#21) – `class-wc-plz-updater.php` `run_upgrade()`: Sperre gegen parallele
-  Läufe (`add_option`-Lock mit Ablauf), `ignore_user_abort(true)`, `set_time_limit()`.
+  Läufe (atomarer `INSERT IGNORE`-Lock, verwaist nach 10 min; Webhook antwortet dann 409), doppelte
+  Webhook-Zustellungen werden übersprungen, `ignore_user_abort(true)`, `set_time_limit()`.
 - [x] **A3 Notfall-Runbook `docs/RUNBOOK.md`** (S) – erledigt (#21) – Rollback per Revert-PR; was tun bei Fatal Error
-  (Betreiber benennt Plugin-Ordner per FTP um / Recovery-Mode-Mail); Webhook-Secret rotieren; Update-Log.
+  (repariertes Zip per `git archive` bauen, Betreiber lädt es über „Plugin hochladen“ hoch – niemals
+  „Löschen“, das löscht alle Daten); Webhook-Secret rotieren; Update-Log.
 - [x] **A4 WP-Rocket-Cache** (S) – erledigt (#20) – In `filter_products()` `DONOTCACHEPAGE` setzen, sobald serverseitig
   im Postversand gefiltert wird. Verhindert, dass eine gefilterte Kategorieseite für alle gecacht wird.
   (Alternative „Never cache cookies: `wc_delivery_mode`“ verworfen: würde alle Kunden mit gewähltem Modus
