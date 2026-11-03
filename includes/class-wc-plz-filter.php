@@ -423,6 +423,27 @@ final class WC_PLZ_Filter {
             ],
         ];
         $q->set( 'tax_query', $tax );
+
+        // The product list is now specific to this visitor's cookie. WP Rocket
+        // decides what to cache from the request alone (it does not know about
+        // wc_delivery_mode), so without this the filtered page could land in the
+        // full-page cache and be served to every visitor - including pickup and
+        // local-delivery customers, who would then miss products. Only this
+        // response is excluded; post-mode visitors may still get cached
+        // (unfiltered) pages, where the client-side hiding (head script +
+        // plz-popup.js) removes the excluded products.
+        self::do_not_cache_page();
+    }
+
+    /**
+     * Tells WP Rocket (and other page caches honouring the de-facto standard
+     * constant) not to store the current response, because it depends on the
+     * visitor's wc_delivery_mode cookie.
+     */
+    private static function do_not_cache_page(): void {
+        if ( ! defined( 'DONOTCACHEPAGE' ) ) {
+            define( 'DONOTCACHEPAGE', true );
+        }
     }
 
     /* --- fgf-Hardening: Server-Side Enforcement --- */
@@ -664,6 +685,11 @@ final class WC_PLZ_Filter {
         if ( ! in_array( (int) $product->get_id(), $hidden_ids, true ) ) {
             return;
         }
+
+        // Cookie-dependent response (redirect for post-mode visitors, the
+        // product page for everyone else). WP Rocket only caches 200
+        // responses, so this is defence in depth rather than a known leak.
+        self::do_not_cache_page();
 
         $back = add_query_arg( 'plz_blocked', '1', wp_get_referer() ?: home_url( '/' ) );
         wp_safe_redirect( $back );
