@@ -864,18 +864,22 @@ final class WC_PLZ_Filter {
                 var ids = JSON.parse(localStorage.getItem('wc_plz_hidden_ids') || '[]');
                 var slugs = JSON.parse(localStorage.getItem('wc_plz_hidden_slugs') || '[]');
                 if (!ids.length && !slugs.length) return;
+                // Zwei getrennte Regeln: Browser ohne :has()-Support verwerfen sonst
+                // die komplette Selektorliste – und damit auch die ID-Selektoren.
+                var css = '';
                 // .pdb{ID} = fgf-Custom-Grid; .products .post-{ID} = WC-Standard-Loops
                 // (Cross-Sells / Up-Sells / Related / Shop). Niemals body.post-{ID} oder
                 // article.post-{ID} matchen, sonst verschwindet die Single-Product-Page.
-                var sel = ids.map(function(id){ return '.pdb' + id + ', .products .post-' + id; }).join(',');
-                if (slugs.length) {
-                    var cSel = slugs.map(function(s){ return '.jet-woo-products__inner-box:has(a[href*="/' + s + '/"])'; }).join(',');
-                    sel = sel ? sel + ',' + cSel : cSel;
+                if (ids.length) {
+                    css += ids.map(function(id){ return '.pdb' + id + ', .products .post-' + id; }).join(',') + '{display:none!important}';
                 }
-                if (!sel) return;
+                if (slugs.length) {
+                    css += slugs.map(function(s){ return '.jet-woo-products__inner-box:has(a[href*="/' + s + '/"])'; }).join(',') + '{display:none!important}';
+                }
+                if (!css) return;
                 var s = document.createElement('style');
                 s.id = 'wc-plz-hide-style';
-                s.textContent = sel + '{display:none!important}';
+                s.textContent = css;
                 (document.head || document.documentElement).appendChild(s);
             } catch (e) {}
         })();
@@ -927,7 +931,7 @@ final class WC_PLZ_Filter {
                     <div class="wc-plz-section">
                         <label class="wc-plz-label" for="wc-plz-input">Postleitzahl für Lieferung / Versand</label>
                         <div class="wc-plz-input-row">
-                            <input type="text" id="wc-plz-input" class="wc-plz-input" maxlength="5" inputmode="numeric" pattern="[0-9]{5}" placeholder="z. B. 63667" autocomplete="postal-code" />
+                            <input type="text" id="wc-plz-input" class="wc-plz-input" inputmode="numeric" pattern="[0-9]{5}" placeholder="z. B. 63667" autocomplete="postal-code" />
                             <button id="wc-plz-submit" class="wc-plz-btn wc-plz-btn--primary">Prüfen</button>
                         </div>
                         <div id="wc-plz-feedback" class="wc-plz-feedback" aria-live="polite"></div>
