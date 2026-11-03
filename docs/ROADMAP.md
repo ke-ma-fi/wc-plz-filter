@@ -39,9 +39,9 @@ was danach noch offen ist, steht unter [Offen nach 2.13.0](#offen-nach-2130).
 - [x] **B1 Packliste** (M) – erledigt (#18) – `class-woohoo-po-aggregator.php`: Erstattungen abziehen
   (`get_qty_refunded_for_item`), gemischte Einheiten pro Produkt nicht falsch summieren, Formate
   „500 gr“, „1 Liter“, „1.000 g“ erkennen, Dezimalmengen nicht abschneiden (`%d`).
-- [x] **B2 Upgrade-Routine** (S) – erledigt (#20, angepasst in „Review-Fixes 2.13.0“) – `maybe_upgrade()`
+- [x] **B2 Upgrade-Routine** (S) – erledigt (#20, angepasst in #24) – `maybe_upgrade()`
   einmal pro Version. Hintergrund: Webhook-Updates führen den Aktivierungs-Hook nie aus. Seit den
-  Review-Fixes ruft sie nicht mehr `install()` auf, sondern `WC_PLZ_Filter::upgrade()`: `dbDelta` nur
+  #24 ruft sie nicht mehr `install()` auf, sondern `WC_PLZ_Filter::upgrade()`: `dbDelta` nur
   bei geänderter `wc_plz_db_version`, sonst nur Cleanup-Cron sicherstellen; im Dev-Modus einen
   verirrten Reminder-Cron entfernen, ihn aber **nie** einplanen; Rollen-Capabilities bleiben
   unangetastet. `install()` läuft nur noch bei Aktivierung. Was künftig bei Updates nötig ist, muss
@@ -134,11 +134,11 @@ was danach noch offen ist, steht unter [Offen nach 2.13.0](#offen-nach-2130).
 - [ ] **Zahlungs-Erinnerung ohne Altersgrenze nach unten** (S) – `get_pending_orders()` holt alle
   `pending`-Bestellungen, die älter als die Schwelle sind (bis 200), egal wie alt. Beim Live-Schalten
   (Dev-Modus aus → Cron wird eingeplant) bekämen also auch wochen- oder monatealte, nie bezahlte
-  Bestellungen sofort eine Erinnerung. Seit den Review-Fixes plant der Upgrade-Pfad den Reminder-Cron
+  Bestellungen sofort eine Erinnerung. Seit #24 plant der Upgrade-Pfad den Reminder-Cron
   nicht mehr ein, ein Deploy schaltet also nicht versehentlich live – das Risiko besteht aber beim
   bewussten Live-Schalten weiter. Vorschlag: Höchstalter (z. B. 7 Tage) als Einstellung bzw. zweite
   `date_created`-Grenze; bis dahin vor dem Live-Schalten alte `pending`-Bestellungen stornieren.
-- [x] **Webhook während laufendem Update** – erledigt („Review-Fixes 2.13.0“) – ein zweiter Push
+- [x] **Webhook während laufendem Update** – erledigt (#24) – ein zweiter Push
   bekam 409 `locked`, und GitHub stellt nicht erneut zu; der neue Stand kam erst mit dem nächsten
   Push oder „Redeliver“. Jetzt plant ein 409 per WP-Cron einen einmaligen Nachlauf
   (`wc_plz_updater_retry`, ~1 min später, verschiebt sich, solange die Sperre belegt ist; RUNBOOK
