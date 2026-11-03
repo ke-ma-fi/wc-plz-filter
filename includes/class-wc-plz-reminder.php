@@ -191,10 +191,16 @@ final class WC_PLZ_Reminder {
 
     /**
      * Wird direkt vom Cron (ohne Argumente) oder manuell mit $is_dev_run=true aufgerufen.
-     * Im Cron-Aufruf ist $is_dev_run immer false (Dev-Modus hat keinen Cron).
+     * Im Cron-Aufruf ist $is_dev_run immer false; ein Cron-Lauf im Dev-Modus bricht ab.
      */
     public function run_scan( bool $is_dev_run = false ): array {
         if ( ! $is_dev_run ) {
+            // Cron-Lauf im Dev-Modus = verwaistes Event. Ohne diesen Guard würde
+            // es als Live-Lauf echte Kunden anschreiben → Event entfernen, abbrechen.
+            if ( ! empty( $this->get_settings()['dev_mode'] ) ) {
+                self::unschedule_cron_static();
+                return [ 'skipped' => true, 'reason' => 'dev_mode' ];
+            }
             if ( get_transient( self::LOCK_KEY ) ) {
                 return [ 'skipped' => true, 'reason' => 'locked' ];
             }
