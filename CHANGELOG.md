@@ -20,7 +20,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   changes, major only for breaking changes such as an internal rename (see
   [docs/NAMING.md](docs/NAMING.md)).
 
-## [Unreleased]
+## [2.13.1] – unreleased
 
 ### Fixed
 
