@@ -22,7 +22,20 @@ defined( 'ABSPATH' ) || exit;
 final class Woohoo_PO_Aggregator {
 
     const LOCAL_DATE_META = '_willii_delivery_date';
-    const POST_METHOD_TITLE = 'Postversand';
+
+    /**
+     * Case-insensitive substrings that mark a shipping line as Postversand,
+     * matched against the line's method title ("Versand per DHL",
+     * "Postversand", "DHL Paket") and method ID (e.g. a DHL plugin's
+     * "pr_dhl_paket"). Deliberately not an exact title: the shop renamed the
+     * method from "Postversand" to "Versand per DHL" once already, which
+     * silently emptied the Postversand view. Extend via the
+     * "woohoo_po_post_method_keywords" filter.
+     */
+    const POST_METHOD_KEYWORDS = [ 'dhl', 'post' ];
+
+    /** Method IDs of pickup methods - never Postversand, whatever their title says. */
+    private const PICKUP_METHOD_IDS = [ 'local_pickup', 'pickup_location' ];
 
     private const PIECE_UNIT = 'Stück';
 
@@ -80,8 +93,9 @@ final class Woohoo_PO_Aggregator {
 
     /**
      * Postversand: all currently open orders (processing, not completed)
-     * shipped via "Postversand" - date-agnostic by design (mirrors the n8n
-     * workflow, which never filtered Postversand by date either).
+     * with a postal shipping method (see is_post_order()) - date-agnostic
+     * by design (mirrors the n8n workflow, which never filtered Postversand
+     * by date either).
      *
      * @param string[] $exclude_postcodes
      */
@@ -92,12 +106,47 @@ final class Woohoo_PO_Aggregator {
             'return' => 'objects',
         ] );
 
-        $orders = array_filter( $orders, function ( \WC_Order $order ) {
+        $keywords = self::post_method_keywords();
+        $orders   = array_filter( $orders, function ( \WC_Order $order ) use ( $keywords ) {
             return $order->get_date_completed() === null
-                && self::shipping_method_title( $order ) === self::POST_METHOD_TITLE;
+                && self::is_post_order( $order, $keywords );
         } );
 
         return self::aggregate( $orders, $exclude_postcodes );
+    }
+
+    /** @return string[] Non-empty keywords. */
+    private static function post_method_keywords(): array {
+        $keywords = (array) apply_filters( 'woohoo_po_post_method_keywords', self::POST_METHOD_KEYWORDS );
+        return array_values( array_filter( array_map(
+            fn( $keyword ) => trim( (string) $keyword ),
+            $keywords
+        ), 'strlen' ) );
+    }
+
+    /**
+     * An order is Postversand when one of its shipping lines contains a
+     * keyword in its title or method ID, and none of them is a pickup
+     * method (an order without shipping lines is never Postversand).
+     *
+     * @param string[] $keywords
+     */
+    private static function is_post_order( \WC_Order $order, array $keywords ): bool {
+        $is_post = false;
+        foreach ( $order->get_shipping_methods() as $shipping_item ) {
+            $method_id = (string) $shipping_item->get_method_id();
+            if ( in_array( $method_id, self::PICKUP_METHOD_IDS, true ) ) {
+                return false;
+            }
+            $haystack = $shipping_item->get_method_title() . ' ' . $method_id;
+            foreach ( $keywords as $keyword ) {
+                if ( stripos( $haystack, $keyword ) !== false ) {
+                    $is_post = true;
+                    break;
+                }
+            }
+        }
+        return $is_post;
     }
 
     private static function shipping_method_title( \WC_Order $order ): string {

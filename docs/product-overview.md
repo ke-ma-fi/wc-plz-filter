@@ -40,11 +40,17 @@ GET /wp-json/woohoo/v1/product-overview
 
 | Param | Required | Format | Description |
 |-------|----------|--------|--------------|
-| `mode` | yes | `local` \| `post` | `local` = orders whose delivery-date meta matches `date`. `post` = all open orders shipped via "Postversand", date-agnostic. |
+| `mode` | yes | `local` \| `post` | `local` = orders whose delivery-date meta matches `date`. `post` = all open orders with a postal shipping method (see below), date-agnostic. |
 | `date` | only if `mode=local` | `YYYY-MM-DD` | Matched against the `_willii_delivery_date` order meta. |
 | `exclude_postcodes` | no | comma-separated string | Orders whose shipping postcode exactly matches one of these are dropped. Non-digit characters are stripped from each entry before matching. |
 
-Only orders in WooCommerce status `processing` with no completion date are included in either mode. Refunds are netted out per line item (ordered quantity minus refunded quantity); a fully refunded line is left out.
+Only orders in WooCommerce status `processing` with no completion date are included in either mode.
+
+**Which orders count as Postversand (`mode=post`):** an order whose shipping line contains `dhl` or `post` (case-insensitive) in its method title or method ID — e.g. "Versand per DHL", "Postversand", "DHL Paket" — unless one of its shipping lines is a pickup method (`local_pickup`, `pickup_location`). Orders without a shipping line are never included. The match is deliberately not on the exact title: the shop's method was renamed from "Postversand" to "Versand per DHL" once, which silently emptied this view. Keywords can be changed in code via the `woohoo_po_post_method_keywords` filter:
+
+```php
+add_filter( 'woohoo_po_post_method_keywords', fn( $keywords ) => [ ...$keywords, 'paket' ] );
+``` Refunds are netted out per line item (ordered quantity minus refunded quantity); a fully refunded line is left out.
 
 ### Authentication
 
@@ -75,7 +81,7 @@ The response always sends `Cache-Control: no-store, max-age=0` — it is never b
       "orders": [
         {
           "customer_name": "Erika Musterfrau",
-          "shipping_method": "Postversand",
+          "shipping_method": "Versand per DHL",
           "variant": "Gewürzt, Portion A", // joined attribute meta, "—" if none
           "qty_label": "2 × 500 g = 1 kg"  // pre-formatted quantity line
         }
