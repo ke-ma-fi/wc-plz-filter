@@ -20,6 +20,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   changes, major only for breaking changes such as an internal rename (see
   [docs/NAMING.md](docs/NAMING.md)).
 
+## [2.13.1] – 2026-11-11
+
+### Fixed
+
+- Packliste (Produktübersicht): the "Postversand" view was empty because it
+  matched the exact shipping-method title "Postversand", while the shop's
+  method is now called "Versand per DHL". Postal orders are now recognised by
+  the keywords `dhl` / `post` in the method title or ID (pickup methods are
+  never included); keywords are filterable via
+  `woohoo_po_post_method_keywords`.
+
 ## [2.13.0] – unreleased
 
 Deploy-safety and hardening release following the October 2026 review
